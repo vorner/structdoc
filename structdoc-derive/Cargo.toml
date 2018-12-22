@@ -8,7 +8,9 @@ edition = "2018"
 nightly = ["proc-macro2/nightly"]
 
 [dependencies]
+either = "~1"
 heck = "~0.3"
+itertools = "~0.8"
 quote = "~0.6"
 proc-macro2 = "~0.4"
 syn = "~0.15"

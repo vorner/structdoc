@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::mem;
 
 mod impls;
 
@@ -56,6 +57,22 @@ pub enum Node {
     },
     Struct(HashMap<Text, Field>),
     Enum(HashMap<Text, Field>),
+}
+
+impl Node {
+    pub fn set_flag(&mut self, flag: Flags) {
+        if let Node::Wrapper { ref mut flags, .. } = self {
+            *flags |= flag;
+        } else {
+            let mut old = Node::Leaf;
+            mem::swap(&mut old, self);
+            *self = Node::Wrapper {
+                child: Box::new(old),
+                flags: flag,
+                arity: Arity::One,
+            };
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
