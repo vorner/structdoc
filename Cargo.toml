@@ -4,5 +4,15 @@ version = "0.1.0"
 authors = ["Michal 'vorner' Vaner <vorner@vorner.cz>"]
 edition = "2018"
 
+[workspace]
+members = [
+    ".",
+    "structdoc-derive",
+]
+
+[features]
+default = ["structdoc-derive"]
+
 [dependencies]
 bitflags = "~1"
+structdoc-derive = { version = "~0.1", path = "structdoc-derive", optional = true }

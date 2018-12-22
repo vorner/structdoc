@@ -1,0 +1,17 @@
+[package]
+name = "structdoc-derive"
+version = "0.1.0"
+authors = ["Michal 'vorner' Vaner <vorner@vorner.cz>"]
+edition = "2018"
+
+[features]
+nightly = ["proc-macro2/nightly"]
+
+[dependencies]
+heck = "~0.3"
+quote = "~0.6"
+proc-macro2 = "~0.4"
+syn = "~0.15"
+
+[lib]
+proc-macro = true

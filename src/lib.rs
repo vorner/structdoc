@@ -5,6 +5,9 @@ mod impls;
 
 use bitflags::bitflags;
 
+#[cfg(feature = "structdoc-derive")]
+pub use structdoc_derive::StructDoc;
+
 pub type Text = Cow<'static, str>;
 
 // TODO: Hide something of the public stuff?
@@ -56,7 +59,7 @@ pub enum Node {
 }
 
 #[derive(Clone, Debug)]
-pub struct Documentation(Node);
+pub struct Documentation(pub Node);
 
 impl Documentation {
     pub fn leaf() -> Documentation {
