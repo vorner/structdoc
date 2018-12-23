@@ -24,7 +24,10 @@ enum Selection {
 
 #[derive(StructDoc, Deserialize)]
 #[structdoc(rename_all = "SCREAMING-KEBAB-CASE")]
-struct Stuff {
+struct Stuff<T>
+where
+    T: Clone,
+{
     /// How many times to say hello
     #[structdoc(rename = "hello")]
     #[serde(default)]
@@ -40,8 +43,17 @@ struct Stuff {
 
     /// Select one of these, please
     selection: Selection,
+
+    #[serde(flatten)]
+    sub: T,
+}
+
+#[derive(Clone, StructDoc, Deserialize)]
+struct Inner {
+    /// A bool
+    c: bool,
 }
 
 fn main() {
-    println!("{:?}", Stuff::document());
+    println!("{:?}", Stuff::<Inner>::document());
 }

@@ -4,13 +4,15 @@ use std::iter;
 
 use either::Either;
 use itertools::Itertools;
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::quote;
+use syn::fold::{self, Fold};
 use syn::punctuated::Punctuated;
-use syn::token::Comma;
+use syn::token::{Comma, Colon2};
 use syn::{
-    Attribute, Data, DataEnum, DataStruct, DeriveInput, Field, Fields, Ident, Lit, Meta, MetaList,
-    MetaNameValue, NestedMeta, Variant,
+    Attribute, Data, DataEnum, DataStruct, DeriveInput, Field, Fields, Generics, Ident,
+    LifetimeDef, Lit, Meta, MetaList, MetaNameValue, NestedMeta, Path, PathArguments, PathSegment,
+    TypeParam, TypeParamBound, TraitBound, TraitBoundModifier, Variant,
 };
 
 #[derive(Clone, Eq, PartialEq)]
@@ -221,30 +223,20 @@ fn named_field(field: &Field, container_attrs: &[Attr]) -> TokenStream {
     }
 }
 
-fn derive_struct(
-    name: &Ident,
-    fields: &Punctuated<Field, Comma>,
-    attrs: &[Attribute],
-) -> TokenStream {
+fn derive_struct(fields: &Punctuated<Field, Comma>, attrs: &[Attribute]) -> TokenStream {
     let struct_attrs = parse_attrs(attrs);
     // TODO: Validate the attributes make sense here
     // TODO: Generics
     let insert_fields = fields.iter().map(|field| named_field(field, &struct_attrs));
 
     quote! {
-        impl ::structdoc::StructDoc for #name {
-            fn document() -> ::structdoc::Documentation {
-                let mut fields = ::std::collections::HashMap::new();
-                #(#insert_fields)*
-                ::structdoc::Documentation(::structdoc::Node::Struct(fields))
-            }
-        }
+        let mut fields = ::std::collections::HashMap::new();
+        #(#insert_fields)*
+        ::structdoc::Documentation(::structdoc::Node::Struct(fields))
     }
 }
 
-fn derive_enum(name: &Ident, variants: &Punctuated<Variant, Comma>, attrs: &[Attribute])
-    -> TokenStream
-{
+fn derive_enum(variants: &Punctuated<Variant, Comma>, attrs: &[Attribute]) -> TokenStream {
     let enum_attrs = parse_attrs(attrs);
     let insert_varianst = variants
         .iter()
@@ -299,14 +291,67 @@ fn derive_enum(name: &Ident, variants: &Punctuated<Variant, Comma>, attrs: &[Att
         });
 
     quote! {
-        impl ::structdoc::StructDoc for #name {
-            fn document() -> ::structdoc::Documentation {
-                let mut variants = ::std::collections::HashMap::new();
-                #(#insert_varianst)*
-                ::structdoc::Documentation(::structdoc::Node::Enum(variants))
-            }
+        let mut variants = ::std::collections::HashMap::new();
+        #(#insert_varianst)*
+        ::structdoc::Documentation(::structdoc::Node::Enum(variants))
+    }
+}
+
+fn filter_generic_bounds(generics: &Generics) -> Generics {
+    struct Filter;
+
+    // TODO: Attribute to allow not adding the generic bound
+
+    impl Fold for Filter {
+        fn fold_type_param(&mut self, mut p: TypeParam) -> TypeParam {
+            p.eq_token.take();
+            p.default.take();
+            let mut segments = Punctuated::<PathSegment, Colon2>::new();
+            segments.push(PathSegment {
+                ident: Ident::new("structdoc", Span::call_site()),
+                arguments: PathArguments::None,
+            });
+            segments.push(PathSegment {
+                ident: Ident::new("StructDoc", Span::call_site()),
+                arguments: PathArguments::None,
+            });
+            p.bounds.push(TypeParamBound::Trait(TraitBound {
+                paren_token: None,
+                modifier: TraitBoundModifier::None,
+                lifetimes: None,
+                path: Path {
+                    leading_colon: Some(Colon2::default()),
+                    segments,
+                }
+            }));
+            p
         }
     }
+
+    fold::fold_generics(&mut Filter, generics.clone())
+}
+
+fn filter_generic_types(generics: &Generics) -> Generics {
+    struct Filter;
+
+    impl Fold for Filter {
+        fn fold_type_param(&mut self, mut p: TypeParam) -> TypeParam {
+            p.eq_token.take();
+            p.colon_token.take();
+            p.default.take();
+            p.attrs.clear();
+            p.bounds = Punctuated::new();
+            p
+        }
+        fn fold_lifetime_def(&mut self, mut d: LifetimeDef) -> LifetimeDef {
+            d.attrs.clear();
+            d.colon_token.take();
+            d.bounds = Punctuated::new();
+            d
+        }
+    }
+
+    fold::fold_generics(&mut Filter, generics.clone())
 }
 
 // Note: We declare the structdoc attribute. But we also parasite on serde attribute if present.
@@ -314,16 +359,27 @@ fn derive_enum(name: &Ident, variants: &Punctuated<Variant, Comma>, attrs: &[Att
 pub fn structdoc_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input: DeriveInput = syn::parse(input).unwrap();
     let name = &input.ident;
-    match input.data {
+    let generic_bounds = filter_generic_bounds(&input.generics);
+    let generic_types = filter_generic_types(&input.generics);
+    let where_clause = input.generics.where_clause;
+    let inner = match input.data {
         Data::Struct(DataStruct {
             fields: Fields::Named(fields),
             ..
-        }) => derive_struct(name, &fields.named, &input.attrs),
+        }) => derive_struct(&fields.named, &input.attrs),
         Data::Enum(DataEnum {
             variants,
             ..
-        }) => derive_enum(name, &variants, &input.attrs),
+        }) => derive_enum(&variants, &input.attrs),
         _ => unimplemented!("Only named structs and enums for now :-("),
-    }
-    .into()
+    };
+    (quote! {
+        impl #generic_bounds ::structdoc::StructDoc for #name #generic_types
+        #where_clause
+        {
+            fn document() -> ::structdoc::Documentation {
+                #inner
+            }
+        }
+    }).into()
 }
