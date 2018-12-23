@@ -10,7 +10,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, SystemTime, Instant};
 
-use crate::{Arity, Documentation, Flags, Node, StructDoc};
+use crate::{Arity, Documentation, Flags, StructDoc};
 
 // TODO: Impls for other crates, if feature flags are turned on?
 
@@ -18,11 +18,7 @@ macro_rules! arity {
     ($container: ident, $arity: ident) => {
         impl<T: StructDoc> StructDoc for $container<T> {
             fn document() -> Documentation {
-                Documentation(Node::Wrapper {
-                    child: Box::new(T::document().0),
-                    arity: Arity::$arity,
-                    flags: Flags::empty(),
-                })
+                T::document().with_arity(Arity::$arity)
             }
         }
     }
@@ -39,11 +35,7 @@ macro_rules! array {
         $(
             impl<T: StructDoc> StructDoc for [T; $len] {
                 fn document() -> Documentation {
-                    Documentation(Node::Wrapper {
-                        child: Box::new(T::document().0),
-                        arity: Arity::ManyOrdered,
-                        flags: Flags::empty(),
-                    })
+                    T::document().with_arity(Arity::ManyOrdered)
                 }
             }
         )*
@@ -57,49 +49,34 @@ array! {
 
 impl<T: StructDoc, S> StructDoc for HashSet<T, S> {
     fn document() -> Documentation {
-        Documentation(Node::Wrapper {
-            child: Box::new(T::document().0),
-            arity: Arity::ManyUnordered,
-            flags: Flags::empty(),
-        })
+        T::document().with_arity(Arity::ManyUnordered)
     }
 }
 
 impl<T: StructDoc> StructDoc for [T] {
     fn document() -> Documentation {
-        Documentation(Node::Wrapper {
-            child: Box::new(T::document().0),
-            arity: Arity::ManyOrdered,
-            flags: Flags::empty(),
-        })
+        T::document().with_arity(Arity::ManyOrdered)
     }
 }
 
 impl<T: StructDoc> StructDoc for Option<T> {
     fn document() -> Documentation {
-        Documentation(Node::Wrapper {
-            child: Box::new(T::document().0),
-            arity: Arity::One,
-            flags: Flags::OPTIONAL,
-        })
+        // A hack ‒ force a new level/wrapper.
+        let mut doc = T::document().with_arity(Arity::One);
+        doc.set_flag(Flags::OPTIONAL);
+        doc
     }
 }
 
 impl<K: StructDoc, V: StructDoc, S> StructDoc for HashMap<K, V, S> {
     fn document() -> Documentation {
-        Documentation(Node::Map {
-            key: Box::new(K::document().0),
-            value: Box::new(K::document().0),
-        })
+        Documentation::map(K::document(), V::document())
     }
 }
 
 impl<K: StructDoc, V: StructDoc> StructDoc for BTreeMap<K, V> {
     fn document() -> Documentation {
-        Documentation(Node::Map {
-            key: Box::new(K::document().0),
-            value: Box::new(K::document().0),
-        })
+        Documentation::map(K::document(), V::document())
     }
 }
 

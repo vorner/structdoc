@@ -193,7 +193,7 @@ fn get_mods(what: &Ident, attrs: &[Attr]) -> TokenStream {
 }
 
 fn leaf() -> TokenStream {
-    quote!(::structdoc::Node::Leaf)
+    quote!(::structdoc::Documentation::leaf())
 }
 
 fn named_field(field: &Field, container_attrs: &[Attr]) -> TokenStream {
@@ -212,14 +212,14 @@ fn named_field(field: &Field, container_attrs: &[Attr]) -> TokenStream {
     let field_document = if is_leaf {
         leaf()
     } else {
-        quote!(<#ty as ::structdoc::StructDoc>::document().0)
+        quote!(<#ty as ::structdoc::StructDoc>::document())
     };
 
     quote! {
         let mut field = #field_document;
         #mods
         let field = ::structdoc::Field::new(field, #doc);
-        fields.insert(#name.into(), field);
+        fields.push((#name.into(), field));
     }
 }
 
@@ -230,9 +230,9 @@ fn derive_struct(fields: &Punctuated<Field, Comma>, attrs: &[Attribute]) -> Toke
     let insert_fields = fields.iter().map(|field| named_field(field, &struct_attrs));
 
     quote! {
-        let mut fields = ::std::collections::HashMap::new();
+        let mut fields = ::std::vec::Vec::<(&str, ::structdoc::Field)>::new();
         #(#insert_fields)*
-        ::structdoc::Documentation(::structdoc::Node::Struct(fields))
+        ::structdoc::Documentation::struct_(fields)
     }
 }
 
@@ -263,16 +263,17 @@ fn derive_enum(variants: &Punctuated<Variant, Comma>, attrs: &[Attribute]) -> To
                             .map(|field| named_field(field, &attrs));
                         quote! {
                             {
-                                let mut fields = ::std::collections::HashMap::new();
+                                let mut fields =
+                                    ::std::vec::Vec::<(&str, ::structdoc::Field)>::new();
                                 #(#insert_fields)*
-                                ::structdoc::Node::Struct(fields)
+                                ::structdoc::Documentation::struct_(fields)
                             }
                         }
                     }
                     Fields::Unnamed(fields) if fields.unnamed.is_empty() => leaf(),
                     Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
                         let ty = &fields.unnamed[0].ty;
-                        quote!(<#ty as ::structdoc::StructDoc>::document().0)
+                        quote!(<#ty as ::structdoc::StructDoc>::document())
                     }
                     Fields::Unnamed(fields) => {
                         panic!(
@@ -286,14 +287,14 @@ fn derive_enum(variants: &Punctuated<Variant, Comma>, attrs: &[Attribute]) -> To
                 let mut variant = #constructor;
                 #mods
                 let variant = ::structdoc::Field::new(variant, #doc);
-                variants.insert(#name.into(), variant);
+                variants.push((#name.into(), variant));
             }
         });
 
     quote! {
-        let mut variants = ::std::collections::HashMap::new();
+        let mut variants = ::std::vec::Vec::<(&str, ::structdoc::Field)>::new();
         #(#insert_varianst)*
-        ::structdoc::Documentation(::structdoc::Node::Enum(variants))
+        ::structdoc::Documentation::enum_(variants)
     }
 }
 

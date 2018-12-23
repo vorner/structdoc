@@ -11,8 +11,6 @@ pub use structdoc_derive::StructDoc;
 
 pub type Text = Cow<'static, str>;
 
-// TODO: Hide something of the public stuff?
-
 bitflags! {
     pub struct Flags: u8 {
         const FLATTEN  = 0b0001;
@@ -35,16 +33,16 @@ pub struct Field {
 }
 
 impl Field {
-    pub fn new(node: Node, doc: impl Into<Text>) -> Self {
+    pub fn new(inner: Documentation, doc: impl Into<Text>) -> Self {
         Field {
             doc: doc.into(),
-            node,
+            node: inner.0,
         }
     }
 }
 
 #[derive(Clone, Debug)]
-pub enum Node {
+enum Node {
     Leaf,
     Wrapper{
         child: Box<Node>,
@@ -60,7 +58,7 @@ pub enum Node {
 }
 
 impl Node {
-    pub fn set_flag(&mut self, flag: Flags) {
+    fn set_flag(&mut self, flag: Flags) {
         if let Node::Wrapper { ref mut flags, .. } = self {
             *flags |= flag;
         } else {
@@ -76,11 +74,35 @@ impl Node {
 }
 
 #[derive(Clone, Debug)]
-pub struct Documentation(pub Node);
+pub struct Documentation(Node);
 
 impl Documentation {
     pub fn leaf() -> Documentation {
         Documentation(Node::Leaf)
+    }
+
+    pub fn set_flag(&mut self, flag: Flags) {
+        self.0.set_flag(flag);
+    }
+
+    pub fn with_arity(self, arity: Arity) -> Self {
+        Documentation(Node::Wrapper {
+            child: Box::new(self.0),
+            arity,
+            flags: Flags::empty(),
+        })
+    }
+    pub fn map(key: Documentation, value: Documentation) -> Self {
+        Documentation(Node::Map {
+            key: Box::new(key.0),
+            value: Box::new(value.0),
+        })
+    }
+    pub fn struct_(fields: impl IntoIterator<Item = (impl Into<Text>, Field)>) -> Self {
+        Documentation(Node::Struct(fields.into_iter().map(|(t, f)| (t.into(), f)).collect()))
+    }
+    pub fn enum_(variants: impl IntoIterator<Item = (impl Into<Text>, Field)>) -> Self {
+        Documentation(Node::Enum(variants.into_iter().map(|(t, f)| (t.into(), f)).collect()))
     }
 }
 
