@@ -162,8 +162,8 @@ fn mangle_name(name: &Ident, container_attrs: &[Attr], field_attrs: &[Attr]) -> 
 }
 
 fn get_doc(attrs: &[Attr]) -> String {
-    attrs
-        .iter()
+    let lines = iter::once(&Attr::Doc(String::new()))
+        .chain(attrs)
         .filter_map(|a| {
             if let Attr::Doc(d) = a {
                 Some(d)
@@ -171,7 +171,8 @@ fn get_doc(attrs: &[Attr]) -> String {
                 None
             }
         })
-        .join("\n")
+        .join("\n");
+    unindent::unindent(&lines)
 }
 
 fn get_mods(attrs: &[Attr]) -> TokenStream {
