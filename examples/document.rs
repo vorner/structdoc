@@ -6,6 +6,22 @@ enum Undocumented {
     A,
 }
 
+#[derive(Deserialize, StructDoc)]
+#[serde(untagged, rename_all = "camelCase")]
+enum Selection {
+    A {
+        a: i32,
+        b: i32,
+    },
+    X {
+        x: String,
+    },
+    #[structdoc(leaf)]
+    AnotherThing(Undocumented),
+    FooBar(String),
+    Other,
+}
+
 #[derive(StructDoc, Deserialize)]
 #[structdoc(rename_all = "SCREAMING-KEBAB-CASE")]
 struct Stuff {
@@ -21,6 +37,9 @@ struct Stuff {
 
     #[structdoc(skip, leaf)]
     und: Undocumented,
+
+    /// Select one of these, please
+    selection: Selection,
 }
 
 fn main() {

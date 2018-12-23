@@ -9,11 +9,11 @@ use quote::quote;
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
 use syn::{
-    Attribute, Data, DataStruct, DeriveInput, Field, Fields, Ident, Lit, Meta, MetaList,
-    MetaNameValue, NestedMeta,
+    Attribute, Data, DataEnum, DataStruct, DeriveInput, Field, Fields, Ident, Lit, Meta, MetaList,
+    MetaNameValue, NestedMeta, Variant,
 };
 
-#[derive(Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 enum RenameMode {
     Lower,
     Upper,
@@ -60,7 +60,7 @@ impl From<&str> for RenameMode {
     }
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 enum Attr {
     Hidden,
     Flatten,
@@ -69,6 +69,7 @@ enum Attr {
     Doc(String),
     RenameAll(RenameMode),
     Rename(String),
+    // TODO: with = function
     // TODO: Tagging of enums
 }
 
@@ -175,18 +176,49 @@ fn get_doc(attrs: &[Attr]) -> String {
     unindent::unindent(&lines)
 }
 
-fn get_mods(attrs: &[Attr]) -> TokenStream {
+fn get_mods(what: &Ident, attrs: &[Attr]) -> TokenStream {
     let mut mods = TokenStream::new();
     if attrs.contains(&Attr::Default) {
-        mods.extend(quote!(field.set_flag(::structdoc::Flags::OPTIONAL);));
+        mods.extend(quote!(#what.set_flag(::structdoc::Flags::OPTIONAL);));
     }
     if attrs.contains(&Attr::Flatten) {
-        mods.extend(quote!(field.set_flag(::structdoc::Flags::FLATTEN);));
+        mods.extend(quote!(#what.set_flag(::structdoc::Flags::FLATTEN);));
     }
     if attrs.contains(&Attr::Hidden) {
-        mods.extend(quote!(field.set_flag(::structdoc::Flags::HIDE);));
+        mods.extend(quote!(#what.set_flag(::structdoc::Flags::HIDE);));
     }
     mods
+}
+
+fn leaf() -> TokenStream {
+    quote!(::structdoc::Node::Leaf)
+}
+
+fn named_field(field: &Field, container_attrs: &[Attr]) -> TokenStream {
+    let ident = field
+        .ident
+        .as_ref()
+        .expect("A struct with anonymous field?!");
+    let field_attrs = parse_attrs(&field.attrs);
+    let name = mangle_name(ident, &container_attrs, &field_attrs);
+    let ty = &field.ty;
+    let doc = get_doc(&field_attrs);
+    let mods = get_mods(&Ident::new("field", Span::call_site()), &field_attrs);
+    // We don't dive into hiddens, we just list them here. They don't need to have the
+    // implementation.
+    let is_leaf = field_attrs.contains(&Attr::Leaf) || field_attrs.contains(&Attr::Hidden);
+    let field_document = if is_leaf {
+        leaf()
+    } else {
+        quote!(<#ty as ::structdoc::StructDoc>::document().0)
+    };
+
+    quote! {
+        let mut field = #field_document;
+        #mods
+        let field = ::structdoc::Field::new(field, #doc);
+        fields.insert(#name.into(), field);
+    }
 }
 
 fn derive_struct(
@@ -197,32 +229,7 @@ fn derive_struct(
     let struct_attrs = parse_attrs(attrs);
     // TODO: Validate the attributes make sense here
     // TODO: Generics
-    let insert_fields = fields.iter().map(|field| {
-        let ident = field
-            .ident
-            .as_ref()
-            .expect("A struct with anonymous field?!");
-        let field_attrs = parse_attrs(&field.attrs);
-        let name = mangle_name(ident, &struct_attrs, &field_attrs);
-        let ty = &field.ty;
-        let doc = get_doc(&field_attrs);
-        let mods = get_mods(&field_attrs);
-        // We don't dive into hiddens, we just list them here. They don't need to have the
-        // implementation.
-        let is_leaf = field_attrs.contains(&Attr::Leaf) || field_attrs.contains(&Attr::Hidden);
-        let field_document = if is_leaf {
-            quote!(::structdoc::Node::Leaf)
-        } else {
-            quote!(<#ty as ::structdoc::StructDoc>::document().0)
-        };
-
-        quote! {
-            let mut field = #field_document;
-            #mods
-            let field = ::structdoc::Field::new(field, #doc);
-            fields.insert(#name.into(), field);
-        }
-    });
+    let insert_fields = fields.iter().map(|field| named_field(field, &struct_attrs));
 
     quote! {
         impl ::structdoc::StructDoc for #name {
@@ -230,6 +237,73 @@ fn derive_struct(
                 let mut fields = ::std::collections::HashMap::new();
                 #(#insert_fields)*
                 ::structdoc::Documentation(::structdoc::Node::Struct(fields))
+            }
+        }
+    }
+}
+
+fn derive_enum(name: &Ident, variants: &Punctuated<Variant, Comma>, attrs: &[Attribute])
+    -> TokenStream
+{
+    let enum_attrs = parse_attrs(attrs);
+    let insert_varianst = variants
+        .iter()
+        .map(|variant| {
+            let variant_attrs = parse_attrs(&variant.attrs);
+            let name = mangle_name(&variant.ident, &enum_attrs, &variant_attrs);
+            let doc = get_doc(&variant_attrs);
+            let mods = get_mods(&Ident::new("variant", Span::call_site()), &variant_attrs);
+            // TODO: Something goes inside, right?
+            let is_leaf = variant_attrs.contains(&Attr::Leaf)
+                || variant_attrs.contains(&Attr::Hidden);
+            let constructor = if is_leaf {
+                leaf()
+            } else {
+                match &variant.fields {
+                    Fields::Unit => leaf(),
+                    Fields::Named(fields) => {
+                        let mut attrs = Vec::new();
+                        attrs.extend(variant_attrs);
+                        attrs.extend(enum_attrs.clone());
+                        let insert_fields = fields
+                            .named
+                            .iter()
+                            .map(|field| named_field(field, &attrs));
+                        quote! {
+                            {
+                                let mut fields = ::std::collections::HashMap::new();
+                                #(#insert_fields)*
+                                ::structdoc::Node::Struct(fields)
+                            }
+                        }
+                    }
+                    Fields::Unnamed(fields) if fields.unnamed.is_empty() => leaf(),
+                    Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
+                        let ty = &fields.unnamed[0].ty;
+                        quote!(<#ty as ::structdoc::StructDoc>::document().0)
+                    }
+                    Fields::Unnamed(fields) => {
+                        panic!(
+                            "Don't know what to do with tuple variant with {} fields",
+                            fields.unnamed.len(),
+                        );
+                    }
+                }
+            };
+            quote!{
+                let mut variant = #constructor;
+                #mods
+                let variant = ::structdoc::Field::new(variant, #doc);
+                variants.insert(#name.into(), variant);
+            }
+        });
+
+    quote! {
+        impl ::structdoc::StructDoc for #name {
+            fn document() -> ::structdoc::Documentation {
+                let mut variants = ::std::collections::HashMap::new();
+                #(#insert_varianst)*
+                ::structdoc::Documentation(::structdoc::Node::Enum(variants))
             }
         }
     }
@@ -245,6 +319,10 @@ pub fn structdoc_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStre
             fields: Fields::Named(fields),
             ..
         }) => derive_struct(name, &fields.named, &input.attrs),
+        Data::Enum(DataEnum {
+            variants,
+            ..
+        }) => derive_enum(name, &variants, &input.attrs),
         _ => unimplemented!("Only named structs and enums for now :-("),
     }
     .into()
