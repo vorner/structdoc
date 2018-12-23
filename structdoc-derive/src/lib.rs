@@ -354,6 +354,11 @@ fn filter_generic_types(generics: &Generics) -> Generics {
     fold::fold_generics(&mut Filter, generics.clone())
 }
 
+fn derive_transparent(field: &Field) -> TokenStream {
+    let ty = &field.ty;
+    quote!(<#ty as ::structdoc::StructDoc>::document())
+}
+
 // Note: We declare the structdoc attribute. But we also parasite on serde attribute if present.
 #[proc_macro_derive(StructDoc, attributes(structdoc))]
 pub fn structdoc_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -367,6 +372,10 @@ pub fn structdoc_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStre
             fields: Fields::Named(fields),
             ..
         }) => derive_struct(&fields.named, &input.attrs),
+        Data::Struct(DataStruct {
+            fields: Fields::Unnamed(ref fields),
+            ..
+        }) if fields.unnamed.len() == 1 => derive_transparent(&fields.unnamed[0]),
         Data::Enum(DataEnum {
             variants,
             ..
