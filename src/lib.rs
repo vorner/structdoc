@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::mem;
 
 mod impls;
@@ -103,6 +104,12 @@ impl Documentation {
     }
     pub fn enum_(variants: impl IntoIterator<Item = (impl Into<Text>, Field)>) -> Self {
         Documentation(Node::Enum(variants.into_iter().map(|(t, f)| (t.into(), f)).collect()))
+    }
+}
+
+impl Display for Documentation {
+    fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
+        write!(fmt, "Dummy")
     }
 }
 
