@@ -66,7 +66,7 @@ impl From<&str> for RenameMode {
 enum Attr {
     Hidden,
     Flatten,
-    Leaf,
+    Leaf(String),
     Default,
     Doc(String),
     RenameAll(RenameMode),
@@ -85,7 +85,7 @@ fn parse_word(outer: &Ident, inner: &Ident) -> Option<Attr> {
         ("structdoc", "flatten") => Some(Attr::Flatten),
         ("serde", "default") |
         ("structdoc", "default") => Some(Attr::Default),
-        ("structdoc", "leaf") => Some(Attr::Leaf),
+        ("structdoc", "leaf") => Some(Attr::Leaf(String::new())),
         ("structdoc", attr) => panic!("Unknown structdoc attribute {}", attr),
         // TODO: serde-untagged
         // TODO: Does serde-transparent mean anything to us?
@@ -104,6 +104,10 @@ fn parse_name_value(outer: &Ident, inner: &Ident, value: &Lit) -> Option<Attr> {
         ("structdoc", "rename_all", _) => panic!("rename-all expects string"),
         ("serde", "rename", Lit::Str(s)) |
         ("structdoc", "rename", Lit::Str(s)) => Some(Attr::Rename(s.value())),
+        ("serde", "rename", _) |
+        ("structdoc", "rename", _) => panic!("rename expects string"),
+        ("structdoc", "leaf", Lit::Str(s)) => Some(Attr::Leaf(s.value())),
+        ("structdoc", "leaf", _) => panic!("leaf expects string"),
         ("structdoc", name, _) => panic!("Unknown strucdoc attribute {}", name),
         _ => None,
     }
@@ -192,8 +196,17 @@ fn get_mods(what: &Ident, attrs: &[Attr]) -> TokenStream {
     mods
 }
 
-fn leaf() -> TokenStream {
-    quote!(::structdoc::Documentation::leaf())
+fn leaf(ty: &str) -> TokenStream {
+    quote!(::structdoc::Documentation::leaf(#ty))
+}
+
+fn find_leaf(attrs: &[Attr]) -> Option<&str> {
+    for attr in attrs {
+        if let Attr::Leaf(s) = attr {
+            return Some(s);
+        }
+    }
+    None
 }
 
 fn named_field(field: &Field, container_attrs: &[Attr]) -> TokenStream {
@@ -208,9 +221,10 @@ fn named_field(field: &Field, container_attrs: &[Attr]) -> TokenStream {
     let mods = get_mods(&Ident::new("field", Span::call_site()), &field_attrs);
     // We don't dive into hiddens, we just list them here. They don't need to have the
     // implementation.
-    let is_leaf = field_attrs.contains(&Attr::Leaf) || field_attrs.contains(&Attr::Hidden);
+    let found_leaf = find_leaf(&field_attrs);
+    let is_leaf = found_leaf.is_some() || field_attrs.contains(&Attr::Hidden);
     let field_document = if is_leaf {
-        leaf()
+        leaf(found_leaf.unwrap_or_default())
     } else {
         quote!(<#ty as ::structdoc::StructDoc>::document())
     };
@@ -245,14 +259,13 @@ fn derive_enum(variants: &Punctuated<Variant, Comma>, attrs: &[Attribute]) -> To
             let name = mangle_name(&variant.ident, &enum_attrs, &variant_attrs);
             let doc = get_doc(&variant_attrs);
             let mods = get_mods(&Ident::new("variant", Span::call_site()), &variant_attrs);
-            // TODO: Something goes inside, right?
-            let is_leaf = variant_attrs.contains(&Attr::Leaf)
-                || variant_attrs.contains(&Attr::Hidden);
+            let found_leaf = find_leaf(&variant_attrs);
+            let is_leaf = found_leaf.is_some() || variant_attrs.contains(&Attr::Hidden);
             let constructor = if is_leaf {
-                leaf()
+                leaf(found_leaf.unwrap_or_default())
             } else {
                 match &variant.fields {
-                    Fields::Unit => leaf(),
+                    Fields::Unit => leaf(""),
                     Fields::Named(fields) => {
                         let mut attrs = Vec::new();
                         attrs.extend(variant_attrs);
@@ -270,7 +283,7 @@ fn derive_enum(variants: &Punctuated<Variant, Comma>, attrs: &[Attribute]) -> To
                             }
                         }
                     }
-                    Fields::Unnamed(fields) if fields.unnamed.is_empty() => leaf(),
+                    Fields::Unnamed(fields) if fields.unnamed.is_empty() => leaf(""),
                     Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
                         let ty = &fields.unnamed[0].ty;
                         quote!(<#ty as ::structdoc::StructDoc>::document())

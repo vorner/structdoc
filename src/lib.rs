@@ -42,7 +42,7 @@ pub enum Arity {
 struct Entry {
     caption: String,
     text: Vec<String>,
-    flags: Vec<&'static str>,
+    flags: Vec<Text>,
     sub: Vec<Entry>,
     processing: Processing,
 }
@@ -63,7 +63,7 @@ impl Entry {
         } else {
             format!(" ({})", self.flags.iter().rev().join(", "))
         };
-        let colon = if self.is_empty() { ' ' } else { ':' };
+        let colon = if self.text.is_empty() && self.sub.is_empty() { ' ' } else { ':' };
         writeln!(fmt, "{}{}{}{}", indent, self.caption, flags, colon)?;
         indent.push_str("  ");
         for line in &self.text {
@@ -111,7 +111,7 @@ impl Field {
 
 #[derive(Clone, Debug)]
 enum Node {
-    Leaf,
+    Leaf(Text),
     Wrapper {
         child: Box<Node>,
         arity: Arity,
@@ -130,7 +130,7 @@ impl Node {
         if let Node::Wrapper { ref mut flags, .. } = self {
             *flags |= flag;
         } else {
-            let mut old = Node::Leaf;
+            let mut old = Node::Leaf(Text::default());
             mem::swap(&mut old, self);
             *self = Node::Wrapper {
                 child: Box::new(old),
@@ -142,7 +142,17 @@ impl Node {
 
     fn entry(&self) -> Entry {
         match self {
-            Node::Leaf => Entry::default(),
+            Node::Leaf(ty) => {
+                let flags = if ty.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![ty.clone()]
+                };
+                Entry {
+                    flags,
+                    .. Entry::default()
+                }
+            }
             Node::Wrapper {
                 child,
                 flags,
@@ -151,11 +161,11 @@ impl Node {
                 let mut child_entry = child.entry();
                 match arity {
                     Arity::One => (),
-                    Arity::ManyOrdered => child_entry.flags.push("Array"),
-                    Arity::ManyUnordered => child_entry.flags.push("Set"),
+                    Arity::ManyOrdered => child_entry.flags.push("Array".into()),
+                    Arity::ManyUnordered => child_entry.flags.push("Set".into()),
                 }
                 if flags.contains(Flags::OPTIONAL) {
-                    child_entry.flags.push("Optional");
+                    child_entry.flags.push("Optional".into());
                 }
                 if flags.contains(Flags::FLATTEN) && *arity == Arity::One {
                     child_entry.processing |= Processing::FLATTEN;
@@ -197,7 +207,7 @@ impl Node {
                 Entry {
                     caption: String::new(),
                     text: Vec::new(),
-                    flags: vec!["Struct"],
+                    flags: vec!["Struct".into()],
                     sub,
                     processing: Processing::SORT | Processing::STRUCT,
                 }
@@ -209,7 +219,7 @@ impl Node {
                 Entry {
                     caption: String::new(),
                     text: Vec::new(),
-                    flags: vec!["Enum"],
+                    flags: vec!["Enum".into()],
                     sub: variants.collect(),
                     processing: Processing::SORT,
                 }
@@ -222,8 +232,12 @@ impl Node {
 pub struct Documentation(Node);
 
 impl Documentation {
-    pub fn leaf() -> Documentation {
-        Documentation(Node::Leaf)
+    pub fn leaf_empty() -> Documentation {
+        Documentation(Node::Leaf(Text::default()))
+    }
+
+    pub fn leaf(ty: impl Into<Text>) -> Documentation {
+        Documentation(Node::Leaf(ty.into()))
     }
 
     pub fn set_flag(&mut self, flag: Flags) {

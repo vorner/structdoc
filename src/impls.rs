@@ -124,27 +124,36 @@ impl<T: Clone + StructDoc> StructDoc for Cow<'_, T> {
 }
 
 macro_rules! leaf {
-    ($($ty: ty,)*) => {
+    ($($desc: expr => $($ty: ty),*;)*) => {
+        $(
         $(
             impl StructDoc for $ty {
                 fn document() -> Documentation {
-                    Documentation::leaf()
+                    Documentation::leaf($desc)
                 }
             }
+        )*
         )*
     }
 }
 
 leaf! {
-    u8, u16, u32, u64, u128, usize,
-    NonZeroU8, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU128,
-    i8, i16, i32, i64, i128, isize,
-    char, str, String, CString, CStr,
-    bool, (),
-    f32, f64,
-    IpAddr, Ipv4Addr, Ipv6Addr,
-    SocketAddr, SocketAddrV4, SocketAddrV6,
-    Path, PathBuf,
-    OsStr, OsString,
-    Duration, SystemTime, Instant,
+    "Integer" =>
+        u8, u16, u32, u64, u128, usize,
+        NonZeroU8, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU128,
+        i8, i16, i32, i64, i128, isize;
+    "Character" => char;
+    "String" => str, String, CString, CStr, OsStr, OsString;
+    "Boolean" => bool;
+    "Nil" => ();
+    "Float" => f32, f64;
+    "IPv4 address" => Ipv4Addr;
+    "IPv6 address" => Ipv6Addr;
+    "IP address" => IpAddr;
+    "Socket address (IPv4)" => SocketAddrV4;
+    "Socket address (IPv6)" => SocketAddrV6;
+    "Socket address" => SocketAddr;
+    "Filesystem path" => Path, PathBuf;
+    "Time duration" => Duration;
+    "Timestamp" => SystemTime, Instant;
 }
