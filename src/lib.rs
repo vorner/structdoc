@@ -1,7 +1,8 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::mem;
+
+use itertools::Itertools;
 
 mod impls;
 
@@ -20,11 +21,68 @@ bitflags! {
     }
 }
 
-#[derive(Clone, Debug)]
+bitflags! {
+    #[derive(Default)]
+    struct Processing: u8 {
+        const SORT    = 0b0001;
+        const HIDE    = 0b0010;
+        const FLATTEN = 0b0100;
+        const STRUCT  = 0b1000;
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Arity {
     One,
     ManyOrdered,
     ManyUnordered,
+}
+
+#[derive(Debug, Default, Eq, PartialEq, Ord, PartialOrd)]
+struct Entry {
+    caption: String,
+    text: Vec<String>,
+    flags: Vec<&'static str>,
+    sub: Vec<Entry>,
+    processing: Processing,
+}
+
+impl Entry {
+    fn sort(&mut self) {
+        for sub in &mut self.sub {
+            sub.sort();
+        }
+        if self.processing.contains(Processing::SORT) {
+            self.sub.sort();
+        }
+    }
+
+    fn print(&self, fmt: &mut Formatter, indent: &mut String) -> FmtResult {
+        let flags = if self.flags.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", self.flags.iter().rev().join(", "))
+        };
+        let colon = if self.is_empty() { ' ' } else { ':' };
+        writeln!(fmt, "{}{}{}{}", indent, self.caption, flags, colon)?;
+        indent.push_str("  ");
+        for line in &self.text {
+            writeln!(fmt, "{}{}", indent, line)?;
+        }
+        indent.push_str("  ");
+        for sub in &self.sub {
+            sub.print(fmt, indent)?;
+        }
+        assert!(indent.pop().is_some());
+        assert!(indent.pop().is_some());
+        assert!(indent.pop().is_some());
+        assert!(indent.pop().is_some());
+        Ok(())
+    }
+
+    fn is_empty(&self) -> bool {
+        self.caption.is_empty() && self.text.is_empty() && self.sub.is_empty()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -40,12 +98,21 @@ impl Field {
             node: inner.0,
         }
     }
+
+    fn entry(&self, name: String) -> Entry {
+        let mut entry = self.node.entry();
+        if !self.doc.is_empty() {
+            entry.text.extend(self.doc.lines().map(str::to_owned));
+        }
+        entry.caption = name;
+        entry
+    }
 }
 
 #[derive(Clone, Debug)]
 enum Node {
     Leaf,
-    Wrapper{
+    Wrapper {
         child: Box<Node>,
         arity: Arity,
         flags: Flags,
@@ -54,8 +121,8 @@ enum Node {
         key: Box<Node>,
         value: Box<Node>,
     },
-    Struct(HashMap<Text, Field>),
-    Enum(HashMap<Text, Field>),
+    Struct(Vec<(Text, Field)>),
+    Enum(Vec<(Text, Field)>),
 }
 
 impl Node {
@@ -70,6 +137,83 @@ impl Node {
                 flags: flag,
                 arity: Arity::One,
             };
+        }
+    }
+
+    fn entry(&self) -> Entry {
+        match self {
+            Node::Leaf => Entry::default(),
+            Node::Wrapper {
+                child,
+                flags,
+                arity,
+            } => {
+                let mut child_entry = child.entry();
+                match arity {
+                    Arity::One => (),
+                    Arity::ManyOrdered => child_entry.flags.push("Array"),
+                    Arity::ManyUnordered => child_entry.flags.push("Set"),
+                }
+                if flags.contains(Flags::OPTIONAL) {
+                    child_entry.flags.push("Optional");
+                }
+                if flags.contains(Flags::FLATTEN) && *arity == Arity::One {
+                    child_entry.processing |= Processing::FLATTEN;
+                }
+                if flags.contains(Flags::HIDE) {
+                    child_entry.processing |= Processing::HIDE;
+                }
+                child_entry
+            }
+            Node::Map { key, value } => {
+                let mut entry = Entry::default();
+                entry.text.push("Map:".to_owned());
+                let mut key = key.entry();
+                if !key.is_empty() {
+                    key.caption = "Keys:".to_owned();
+                    entry.sub.push(key);
+                }
+                let mut value = value.entry();
+                if !value.is_empty() {
+                    value.caption = "Values:".to_owned();
+                    entry.sub.push(value);
+                }
+                entry
+            }
+            Node::Struct(fields) => {
+                let mut sub = Vec::new();
+                for (name, field) in fields {
+                    let entry = field.entry(format!("Field {}", name));
+                    if entry.processing.contains(Processing::HIDE) {
+                        continue;
+                    } else if entry.processing.contains(Processing::FLATTEN)
+                        && entry.processing.contains(Processing::STRUCT)
+                    {
+                        sub.extend(entry.sub);
+                    } else {
+                        sub.push(entry);
+                    }
+                }
+                Entry {
+                    caption: String::new(),
+                    text: Vec::new(),
+                    flags: vec!["Struct"],
+                    sub,
+                    processing: Processing::SORT | Processing::STRUCT,
+                }
+            }
+            Node::Enum(variants) => {
+                let variants = variants
+                    .iter()
+                    .map(|(name, variant)| variant.entry(format!("Variant {}", name)));
+                Entry {
+                    caption: String::new(),
+                    text: Vec::new(),
+                    flags: vec!["Enum"],
+                    sub: variants.collect(),
+                    processing: Processing::SORT,
+                }
+            }
         }
     }
 }
@@ -100,16 +244,24 @@ impl Documentation {
         })
     }
     pub fn struct_(fields: impl IntoIterator<Item = (impl Into<Text>, Field)>) -> Self {
-        Documentation(Node::Struct(fields.into_iter().map(|(t, f)| (t.into(), f)).collect()))
+        Documentation(Node::Struct(
+            fields.into_iter().map(|(t, f)| (t.into(), f)).collect(),
+        ))
     }
     pub fn enum_(variants: impl IntoIterator<Item = (impl Into<Text>, Field)>) -> Self {
-        Documentation(Node::Enum(variants.into_iter().map(|(t, f)| (t.into(), f)).collect()))
+        Documentation(Node::Enum(
+            variants.into_iter().map(|(t, f)| (t.into(), f)).collect(),
+        ))
     }
 }
 
 impl Display for Documentation {
     fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
-        write!(fmt, "Dummy")
+        let mut entry = self.0.entry();
+        entry.sort();
+        entry.caption = "<root>".to_owned();
+        let mut indent = String::new();
+        entry.print(fmt, &mut indent)
     }
 }
 

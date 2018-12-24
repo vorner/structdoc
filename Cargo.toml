@@ -15,6 +15,9 @@ default = ["structdoc-derive"]
 
 [dependencies]
 bitflags = "~1"
+itertools = "~0.8"
+structdoc-derive = { version = "~0.1", path = "structdoc-derive", optional = true }
+
+[dev-dependencies]
 serde = "~1"
 serde_derive = "~1"
-structdoc-derive = { version = "~0.1", path = "structdoc-derive", optional = true }

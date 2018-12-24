@@ -36,6 +36,7 @@ where
     /// Some extra chatter.
     ///
     /// Appended to the stuff.
+    #[serde(default)]
     b: Vec<String>,
 
     #[structdoc(skip, leaf)]
@@ -55,5 +56,7 @@ struct Inner {
 }
 
 fn main() {
-    println!("{:?}", Stuff::<Inner>::document());
+    let documentation = Stuff::<Inner>::document();
+    println!("{:?}", documentation);
+    println!("{}", documentation);
 }

@@ -1,14 +1,14 @@
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
-use std::collections::{BinaryHeap, BTreeMap, BTreeSet, HashMap, HashSet, LinkedList, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
 use std::ffi::{CStr, CString, OsStr, OsString};
 use std::marker::PhantomData;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
-use std::num::{NonZeroU8, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU128, Wrapping};
+use std::num::{NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, Wrapping};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::{Duration, SystemTime, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::{Arity, Documentation, Flags, StructDoc};
 
@@ -21,7 +21,7 @@ macro_rules! arity {
                 T::document().with_arity(Arity::$arity)
             }
         }
-    }
+    };
 }
 
 arity!(Vec, ManyOrdered);
