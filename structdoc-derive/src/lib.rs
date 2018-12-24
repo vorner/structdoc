@@ -63,6 +63,14 @@ impl From<&str> for RenameMode {
 }
 
 #[derive(Clone, Eq, PartialEq)]
+enum Tag {
+    Untagged,
+    Internal {
+        tag: String,
+    },
+}
+
+#[derive(Clone, Eq, PartialEq)]
 enum Attr {
     Hidden,
     Flatten,
@@ -71,6 +79,8 @@ enum Attr {
     Doc(String),
     RenameAll(RenameMode),
     Rename(String),
+    Tag(Tag),
+    TagContent(String),
     // TODO: with = function
     // TODO: Tagging of enums
 }
@@ -86,6 +96,8 @@ fn parse_word(outer: &Ident, inner: &Ident) -> Option<Attr> {
         ("serde", "default") |
         ("structdoc", "default") => Some(Attr::Default),
         ("structdoc", "leaf") => Some(Attr::Leaf(String::new())),
+        ("serde", "untagged") |
+        ("structdoc", "untagged") => Some(Attr::Tag(Tag::Untagged)),
         ("structdoc", attr) => panic!("Unknown structdoc attribute {}", attr),
         // TODO: serde-untagged
         // TODO: Does serde-transparent mean anything to us?
@@ -108,6 +120,14 @@ fn parse_name_value(outer: &Ident, inner: &Ident, value: &Lit) -> Option<Attr> {
         ("structdoc", "rename", _) => panic!("rename expects string"),
         ("structdoc", "leaf", Lit::Str(s)) => Some(Attr::Leaf(s.value())),
         ("structdoc", "leaf", _) => panic!("leaf expects string"),
+        ("serde", "tag", Lit::Str(s)) |
+        ("structdoc", "tag", Lit::Str(s)) => Some(Attr::Tag(Tag::Internal { tag: s.value() })),
+        ("serde", "tag", _) |
+        ("structdoc", "tag", _) => panic!("tag expects string"),
+        ("serde", "content", Lit::Str(s)) |
+        ("structdoc", "content", Lit::Str(s)) => Some(Attr::TagContent(s.value())),
+        ("serde", "content", _) |
+        ("structdoc", "content", _) => panic!("content expects string"),
         ("structdoc", name, _) => panic!("Unknown strucdoc attribute {}", name),
         _ => None,
     }
@@ -240,7 +260,6 @@ fn named_field(field: &Field, container_attrs: &[Attr]) -> TokenStream {
 fn derive_struct(fields: &Punctuated<Field, Comma>, attrs: &[Attribute]) -> TokenStream {
     let struct_attrs = parse_attrs(attrs);
     // TODO: Validate the attributes make sense here
-    // TODO: Generics
     let insert_fields = fields.iter().map(|field| named_field(field, &struct_attrs));
 
     quote! {
@@ -248,6 +267,24 @@ fn derive_struct(fields: &Punctuated<Field, Comma>, attrs: &[Attribute]) -> Toke
         #(#insert_fields)*
         ::structdoc::Documentation::struct_(fields)
     }
+}
+
+fn find_tag(attrs: &[Attr]) -> Option<&Tag> {
+    for attr in attrs {
+        if let Attr::Tag(tag) = attr {
+            return Some(tag);
+        }
+    }
+    None
+}
+
+fn find_tag_content(attrs: &[Attr]) -> Option<&str> {
+    for attr in attrs {
+        if let Attr::TagContent(s) = attr {
+            return Some(s);
+        }
+    }
+    None
 }
 
 fn derive_enum(variants: &Punctuated<Variant, Comma>, attrs: &[Attribute]) -> TokenStream {
@@ -304,10 +341,19 @@ fn derive_enum(variants: &Punctuated<Variant, Comma>, attrs: &[Attribute]) -> To
             }
         });
 
+    let tag = match (find_tag(&enum_attrs), find_tag_content(&enum_attrs)) {
+        (None, _) => quote!(External),
+        (Some(Tag::Internal { tag }), Some(content)) => {
+            quote!(Adjacent { tag: #tag.to_owned(), content: #content.to_owned() })
+        }
+        (Some(Tag::Internal { tag }), _) => quote!(Internal { tag: #tag.to_owned() }),
+        (Some(Tag::Untagged), _) => quote!(Untagged),
+    };
+
     quote! {
         let mut variants = ::std::vec::Vec::<(&str, ::structdoc::Field)>::new();
         #(#insert_varianst)*
-        ::structdoc::Documentation::enum_(variants)
+        ::structdoc::Documentation::enum_(variants, ::structdoc::Tagging::#tag)
     }
 }
 

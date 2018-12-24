@@ -24,10 +24,11 @@ bitflags! {
 bitflags! {
     #[derive(Default)]
     struct Processing: u8 {
-        const SORT    = 0b0001;
-        const HIDE    = 0b0010;
-        const FLATTEN = 0b0100;
-        const STRUCT  = 0b1000;
+        const SORT    = 0b0000_0001;
+        const HIDE    = 0b0000_0010;
+        const FLATTEN = 0b0000_0100;
+        const STRUCT  = 0b0000_1000;
+        const ENUM    = 0b0001_0000;
     }
 }
 
@@ -36,6 +37,19 @@ pub enum Arity {
     One,
     ManyOrdered,
     ManyUnordered,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Tagging {
+    Untagged,
+    External,
+    Internal {
+        tag: String
+    },
+    Adjacent {
+        tag: String,
+        content: String,
+    },
 }
 
 #[derive(Debug, Default, Eq, PartialEq, Ord, PartialOrd)]
@@ -61,7 +75,8 @@ impl Entry {
         let flags = if self.flags.is_empty() {
             String::new()
         } else {
-            format!(" ({})", self.flags.iter().rev().join(", "))
+            let space = if self.caption.is_empty() { "" } else { " " };
+            format!("{}({})", space, self.flags.iter().rev().join(", "))
         };
         let colon = if self.text.is_empty() && self.sub.is_empty() { ' ' } else { ':' };
         writeln!(fmt, "{}{}{}{}", indent, self.caption, flags, colon)?;
@@ -99,12 +114,12 @@ impl Field {
         }
     }
 
-    fn entry(&self, name: String) -> Entry {
+    fn entry(&self, prefix: &str, name: &str) -> Entry {
         let mut entry = self.node.entry();
         if !self.doc.is_empty() {
             entry.text.extend(self.doc.lines().map(str::to_owned));
         }
-        entry.caption = name;
+        entry.caption = format!("{}{}", prefix, name);
         entry
     }
 }
@@ -122,7 +137,10 @@ enum Node {
         value: Box<Node>,
     },
     Struct(Vec<(Text, Field)>),
-    Enum(Vec<(Text, Field)>),
+    Enum {
+        variants: Vec<(Text, Field)>,
+        tagging: Tagging,
+    },
 }
 
 impl Node {
@@ -137,6 +155,38 @@ impl Node {
                 flags: flag,
                 arity: Arity::One,
             };
+        }
+    }
+
+    fn struct_from<'i, I>(fields: I) -> Entry
+    where
+        I: IntoIterator<Item = &'i (Text, Field)>,
+    {
+        let mut sub = Vec::new();
+        for (name, field) in fields {
+            let mut entry = field.entry("Field ", name);
+            if entry.processing.contains(Processing::FLATTEN)
+                && entry.processing.contains(Processing::ENUM)
+            {
+                entry.flags.push("Inlined to parent".into());
+            }
+            if entry.processing.contains(Processing::HIDE) {
+                continue;
+            } else if entry.processing.contains(Processing::FLATTEN)
+                && entry.processing.contains(Processing::STRUCT)
+            {
+                sub.extend(entry.sub);
+            } else {
+                sub.push(entry);
+            }
+        }
+
+        Entry {
+            caption: String::new(),
+            text: Vec::new(),
+            flags: vec!["Struct".into()],
+            sub,
+            processing: Processing::SORT | Processing::STRUCT,
         }
     }
 
@@ -191,37 +241,77 @@ impl Node {
                 entry
             }
             Node::Struct(fields) => {
-                let mut sub = Vec::new();
-                for (name, field) in fields {
-                    let entry = field.entry(format!("Field {}", name));
-                    if entry.processing.contains(Processing::HIDE) {
-                        continue;
-                    } else if entry.processing.contains(Processing::FLATTEN)
-                        && entry.processing.contains(Processing::STRUCT)
-                    {
-                        sub.extend(entry.sub);
-                    } else {
-                        sub.push(entry);
-                    }
-                }
-                Entry {
-                    caption: String::new(),
-                    text: Vec::new(),
-                    flags: vec!["Struct".into()],
-                    sub,
-                    processing: Processing::SORT | Processing::STRUCT,
-                }
+                Self::struct_from(fields)
             }
-            Node::Enum(variants) => {
-                let variants = variants
+            Node::Enum { variants, tagging } => {
+                let mut variants = variants
                     .iter()
-                    .map(|(name, variant)| variant.entry(format!("Variant {}", name)));
-                Entry {
-                    caption: String::new(),
+                    .map(|(name, variant)| variant.entry("Variant ", name))
+                    .collect::<Vec<_>>();
+                let (ty, flags, cap) = match tagging {
+                    Tagging::Untagged => {
+                        for (num, variant) in variants.iter_mut().enumerate() {
+                            variant.caption = format!("Variant #{}", num + 1);
+                        }
+                        (
+                            "Anonymous alternatives (inline structs to parent level)",
+                            Processing::empty(),
+                            String::new(),
+                        )
+                    }
+                    Tagging::External => ("One-of", Processing::SORT, String::new()),
+                    Tagging::Internal { tag } => {
+                        (
+                            "Alternatives (inline other fields)",
+                            Processing::SORT,
+                            format!("Field {}", tag),
+                        )
+                    }
+                    Tagging::Adjacent { tag, content } => {
+                        for (num, var) in variants.iter_mut().enumerate() {
+                            let cap = var.caption.replacen("Variant ", "Constant ", 1);
+                            let mut old_text = Vec::new();
+                            mem::swap(&mut old_text, &mut var.text);
+                            var.caption = format!("Field {}", content);
+                            var.text = Vec::new();
+                            let tag_field = Entry {
+                                caption: cap,
+                                text: Vec::new(),
+                                flags: vec!["Variant selector".into()],
+                                sub: Vec::new(),
+                                processing: Processing::empty(),
+                            };
+                            let mut tmp = Entry::default();
+                            mem::swap(&mut tmp, var);
+                            *var = Entry {
+                                caption: format!("Variant #{}", num + 1),
+                                text: old_text,
+                                flags: vec!["Struct".into()],
+                                sub: vec![tag_field, tmp],
+                                processing: Processing::STRUCT,
+                            };
+                        }
+                        // TODO: What do we do with content?
+                        ("Alternatives", Processing::SORT, tag.clone())
+                    }
+                };
+                let inner = Entry {
+                    caption: cap,
                     text: Vec::new(),
-                    flags: vec!["Enum".into()],
-                    sub: variants.collect(),
-                    processing: Processing::SORT,
+                    flags: vec![ty.into()],
+                    sub: variants,
+                    processing: flags | Processing::ENUM,
+                };
+                if inner.sub.iter().all(|sub| sub.sub.is_empty()) {
+                    inner
+                } else {
+                    Entry {
+                        caption: String::new(),
+                        text: Vec::new(),
+                        flags: vec!["Struct".into()],
+                        sub: vec![inner],
+                        processing: Processing::STRUCT,
+                    }
                 }
             }
         }
@@ -262,10 +352,13 @@ impl Documentation {
             fields.into_iter().map(|(t, f)| (t.into(), f)).collect(),
         ))
     }
-    pub fn enum_(variants: impl IntoIterator<Item = (impl Into<Text>, Field)>) -> Self {
-        Documentation(Node::Enum(
-            variants.into_iter().map(|(t, f)| (t.into(), f)).collect(),
-        ))
+    pub fn enum_(variants: impl IntoIterator<Item = (impl Into<Text>, Field)>, tagging: Tagging)
+        -> Self
+    {
+        Documentation(Node::Enum {
+            variants: variants.into_iter().map(|(t, f)| (t.into(), f)).collect(),
+            tagging,
+        })
     }
 }
 

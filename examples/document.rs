@@ -7,7 +7,7 @@ enum Undocumented {
 }
 
 #[derive(Deserialize, StructDoc)]
-#[serde(untagged, rename_all = "camelCase")]
+#[serde(tag = "type", rename_all = "camelCase")]
 enum Selection {
     A {
         a: i32,
