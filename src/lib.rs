@@ -73,7 +73,12 @@
 //! * Allow tweaking how the documentation is printed.
 //! * Proper tests.
 //! * Error handling during derive ‒ the error messages would need some improvements and some
-//!   things are simply ignored.
+//!   things are simply ignored. Furthermore, if you specify some nonsensical combination of
+//!   attributes, you're as likely to get some garbage documentation out instead of error.
+//! * There are plans to provide implementations for types from other crates, under feature flags.
+//!
+//! In other words, let this crate generate the documentation, but skim the result before shipping
+//! to make sure it is correct and makes sense. Pull requests to fix bugs are indeed welcome.
 //!
 //! [`serde`]: https://serde.rs
 //! [`Deserialize`]: https://docs.rs/serde/~1/serde/trait.Deserialize.html
@@ -585,7 +590,8 @@ impl Display for Documentation {
 /// `#[structdoc(leag = "Type")]` attribute. It'll provide trivial implementation without any
 /// explanation and the provided type in parenthesis, if one is provided.
 ///
-/// TODO: Support `#[structdoc(with = "...")]`.
+/// Alternatively, a function `fn() -> Documentation` can be plugged in using the
+/// `#[structdoc(with = "path::to::the_fn")]`. That can return an arbitrary implementation.
 ///
 /// ## Renaming things
 ///

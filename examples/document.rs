@@ -2,7 +2,7 @@
 // unhappy.
 #![allow(dead_code)]
 use serde_derive::Deserialize;
-use structdoc::StructDoc;
+use structdoc::{Documentation, StructDoc};
 
 #[derive(Deserialize)]
 enum Undocumented {
@@ -23,6 +23,10 @@ enum Selection {
     AnotherThing(Undocumented),
     FooBar(String),
     Other,
+}
+
+fn gen_doc() -> Documentation {
+    Documentation::leaf("Manual implementation")
 }
 
 #[derive(StructDoc, Deserialize)]
@@ -50,6 +54,9 @@ where
 
     #[serde(flatten)]
     sub: T,
+
+    #[structdoc(with = "gen_doc")]
+    flag: bool,
 }
 
 #[derive(Clone, StructDoc, Deserialize)]

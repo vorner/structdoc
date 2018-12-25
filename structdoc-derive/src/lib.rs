@@ -25,9 +25,19 @@ use syn::punctuated::Punctuated;
 use syn::token::{Colon2, Comma};
 use syn::{
     Attribute, Data, DataEnum, DataStruct, DeriveInput, Field, Fields, Generics, Ident,
-    LifetimeDef, Lit, Meta, MetaList, MetaNameValue, NestedMeta, Path, PathArguments, PathSegment,
-    TraitBound, TraitBoundModifier, TypeParam, TypeParamBound, Variant,
+    LifetimeDef, Lit, LitStr, Meta, MetaList, MetaNameValue, NestedMeta, Path, PathArguments,
+    PathSegment, TraitBound, TraitBoundModifier, TypeParam, TypeParamBound, Variant,
 };
+
+macro_rules! pat_eq {
+    ($pat: pat, $val: expr) => {
+        if let $pat = $val {
+            true
+        } else {
+            false
+        }
+    };
+}
 
 #[derive(Clone, Eq, PartialEq)]
 enum RenameMode {
@@ -82,7 +92,7 @@ enum Tag {
     Internal { tag: String },
 }
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone)]
 enum Attr {
     Hidden,
     Flatten,
@@ -93,8 +103,7 @@ enum Attr {
     Rename(String),
     Tag(Tag),
     TagContent(String),
-    // TODO: with = function
-    // TODO: Tagging of enums
+    With(LitStr),
 }
 
 fn parse_word(outer: &Ident, inner: &Ident) -> Option<Attr> {
@@ -108,7 +117,6 @@ fn parse_word(outer: &Ident, inner: &Ident) -> Option<Attr> {
         ("structdoc", "leaf") => Some(Attr::Leaf(String::new())),
         ("serde", "untagged") | ("structdoc", "untagged") => Some(Attr::Tag(Tag::Untagged)),
         ("structdoc", attr) => panic!("Unknown structdoc attribute {}", attr),
-        // TODO: serde-untagged
         // TODO: Does serde-transparent mean anything to us?
         // Serde or rustc will validate doc and serde attributes, we don't hope to know them all.
         _ => None,
@@ -141,6 +149,8 @@ fn parse_name_value(outer: &Ident, inner: &Ident, value: &Lit) -> Option<Attr> {
             Some(Attr::TagContent(s.value()))
         }
         ("serde", "content", _) | ("structdoc", "content", _) => panic!("content expects string"),
+        ("structdoc", "with", Lit::Str(s)) => Some(Attr::With(s.clone())),
+        ("structdoc", "with", _) => panic!("with expects string"),
         ("structdoc", name, _) => panic!("Unknown strucdoc attribute {}", name),
         _ => None,
     }
@@ -213,13 +223,13 @@ fn get_doc(attrs: &[Attr]) -> String {
 
 fn get_mods(what: &Ident, attrs: &[Attr]) -> TokenStream {
     let mut mods = TokenStream::new();
-    if attrs.contains(&Attr::Default) {
+    if attrs.iter().any(|a| pat_eq!(Attr::Default, a)) {
         mods.extend(quote!(#what.set_flag(::structdoc::Flags::OPTIONAL);));
     }
-    if attrs.contains(&Attr::Flatten) {
+    if attrs.iter().any(|a| pat_eq!(Attr::Flatten, a)) {
         mods.extend(quote!(#what.set_flag(::structdoc::Flags::FLATTEN);));
     }
-    if attrs.contains(&Attr::Hidden) {
+    if attrs.iter().any(|a| pat_eq!(Attr::Hidden, a)) {
         mods.extend(quote!(#what.set_flag(::structdoc::Flags::HIDE);));
     }
     mods
@@ -238,6 +248,20 @@ fn find_leaf(attrs: &[Attr]) -> Option<&str> {
     None
 }
 
+fn find_with(attrs: &[Attr]) -> Option<&LitStr> {
+    for attr in attrs {
+        if let Attr::With(s) = attr {
+            return Some(s);
+        }
+    }
+    None
+}
+
+fn call_with(s: &LitStr) -> TokenStream {
+    let with: Path = s.parse().unwrap();
+    quote!(#with())
+}
+
 fn named_field(field: &Field, container_attrs: &[Attr]) -> TokenStream {
     let ident = field
         .ident
@@ -251,8 +275,10 @@ fn named_field(field: &Field, container_attrs: &[Attr]) -> TokenStream {
     // We don't dive into hiddens, we just list them here. They don't need to have the
     // implementation.
     let found_leaf = find_leaf(&field_attrs);
-    let is_leaf = found_leaf.is_some() || field_attrs.contains(&Attr::Hidden);
-    let field_document = if is_leaf {
+    let is_leaf = found_leaf.is_some() || field_attrs.iter().any(|a| pat_eq!(Attr::Hidden, a));
+    let field_document = if let Some(with) = find_with(&field_attrs) {
+        call_with(with)
+    } else if is_leaf {
         leaf(found_leaf.unwrap_or_default())
     } else {
         quote!(<#ty as ::structdoc::StructDoc>::document())
@@ -304,8 +330,11 @@ fn derive_enum(variants: &Punctuated<Variant, Comma>, attrs: &[Attribute]) -> To
         let doc = get_doc(&variant_attrs);
         let mods = get_mods(&Ident::new("variant", Span::call_site()), &variant_attrs);
         let found_leaf = find_leaf(&variant_attrs);
-        let is_leaf = found_leaf.is_some() || variant_attrs.contains(&Attr::Hidden);
-        let constructor = if is_leaf {
+        let is_leaf =
+            found_leaf.is_some() || variant_attrs.iter().any(|a| pat_eq!(Attr::Hidden, a));
+        let constructor = if let Some(with) = find_with(&variant_attrs) {
+            call_with(with)
+        } else if is_leaf {
             leaf(found_leaf.unwrap_or_default())
         } else {
             match &variant.fields {
