@@ -22,6 +22,7 @@ enum Selection {
     #[structdoc(leaf)]
     AnotherThing(Undocumented),
     FooBar(String),
+    #[serde(skip)]
     Other,
 }
 

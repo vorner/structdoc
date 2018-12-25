@@ -372,6 +372,7 @@ impl Node {
                 let mut variants = variants
                     .iter()
                     .map(|(name, variant)| variant.entry("Variant ", name))
+                    .filter(|entry| !entry.processing.contains(Processing::HIDE))
                     .collect::<Vec<_>>();
                 let (ty, flags, cap) = match tagging {
                     Tagging::Untagged => {
