@@ -1,3 +1,7 @@
+# 0.1.2
+
+* Minor formatting improvements.
+
 # 0.1.1
 
 * Fix hiding of enum variants.

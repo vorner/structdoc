@@ -1,5 +1,5 @@
 #![doc(
-    html_root_url = "https://docs.rs/structdoc/0.1.1/structdoc/",
+    html_root_url = "https://docs.rs/structdoc/0.1.2/structdoc/",
     test(attr(deny(warnings)))
 )]
 #![forbid(unsafe_code)]
@@ -202,19 +202,26 @@ impl Entry {
         } else {
             ':'
         };
+        if indent.len() >= 2 {
+            indent.truncate(indent.len() - 2);
+            indent.push_str("* ");
+        }
         writeln!(fmt, "{}{}{}{}", indent, self.caption, flags, colon)?;
-        indent.push_str("  ");
+        if indent.len() >= 2 {
+            indent.truncate(indent.len() - 2);
+            indent.push_str("  ");
+        }
+        indent.push_str("| ");
         for line in &self.text {
             writeln!(fmt, "{}{}", indent, line)?;
         }
-        indent.push_str("  ");
+        indent.truncate(indent.len() - 2);
+        indent.push_str("    ");
         for sub in &self.sub {
             sub.print(fmt, indent)?;
         }
-        assert!(indent.pop().is_some());
-        assert!(indent.pop().is_some());
-        assert!(indent.pop().is_some());
-        assert!(indent.pop().is_some());
+        assert!(indent.len() >= 4);
+        indent.truncate(indent.len() - 4);
         Ok(())
     }
 
@@ -385,10 +392,10 @@ impl Node {
                             String::new(),
                         )
                     }
-                    Tagging::External => ("One-of", Processing::SORT, String::new()),
+                    Tagging::External => ("One-of", Processing::empty(), String::new()),
                     Tagging::Internal { tag } => (
                         "Alternatives (inline other fields)",
-                        Processing::SORT,
+                        Processing::empty(),
                         format!("Field {}", tag),
                     ),
                     Tagging::Adjacent { tag, content } => {
@@ -415,7 +422,7 @@ impl Node {
                                 processing: Processing::STRUCT,
                             };
                         }
-                        ("Alternatives", Processing::SORT, tag.clone())
+                        ("Alternatives", Processing::empty(), tag.clone())
                     }
                 };
                 let inner = Entry {
@@ -560,10 +567,10 @@ impl Display for Documentation {
 ///
 /// let documentation = format!("{}", Point::document());
 /// let expected = r#"<root> (Struct):
-///     Field x (Integer):
-///       The horizontal coordinate.
-///     Field y (Integer):
-///       The vertical coordinate.
+///   * Field x (Integer):
+///     | The horizontal coordinate.
+///   * Field y (Integer):
+///     | The vertical coordinate.
 /// "#;
 ///
 /// assert_eq!(expected, documentation);
