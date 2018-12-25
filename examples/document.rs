@@ -1,6 +1,6 @@
 // We don't actually use the structures below, just document them, which makes the compiler a bit
 // unhappy.
-#[allow(dead_code)]
+#![allow(dead_code)]
 use serde_derive::Deserialize;
 use structdoc::StructDoc;
 

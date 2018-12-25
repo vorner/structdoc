@@ -1,3 +1,17 @@
+#![doc(
+    html_root_url = "https://docs.rs/structdoc-derive/0.1.0/structdoc-derive/",
+    test(attr(deny(warnings)))
+)]
+#![forbid(unsafe_code)]
+
+//! Procedural derive support for the [`StructDoc`] trait.
+//!
+//! Users don't need to interact with this crate directly. It is brought in as a dependency of the
+//! [`structdoc`][structdoc-crate] crate and reexported from there.
+//!
+//! [`StructDoc`]: https://docs.rs/structdoc/*/structdoc/trait.StructDoc.html
+//! [structdoc-crate]: https://crates.io/crates/structdoc
+
 extern crate proc_macro;
 
 use std::iter;
