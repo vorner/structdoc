@@ -3,6 +3,12 @@ name = "structdoc-derive"
 version = "0.1.0"
 authors = ["Michal 'vorner' Vaner <vorner@vorner.cz>"]
 edition = "2018"
+description = "Extract structure and documentation from structs (derive support)"
+documentation = "https://docs.rs/structdoc"
+repository = "https://github.com/vorner/structdoc"
+readme = "README.md"
+keywords = ["documentation", "configuration"]
+license = "Apache-2.0/MIT"
 
 [features]
 nightly = ["proc-macro2/nightly"]
@@ -15,6 +21,9 @@ quote = "~0.6"
 proc-macro2 = "~0.4"
 syn = { version = "~0.15", features = ["fold"] }
 unindent = "~0.1"
+
+[dev-dependencies]
+version-sync = "~0.6"
 
 [lib]
 proc-macro = true

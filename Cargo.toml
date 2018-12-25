@@ -3,6 +3,17 @@ name = "structdoc"
 version = "0.1.0"
 authors = ["Michal 'vorner' Vaner <vorner@vorner.cz>"]
 edition = "2018"
+description = "Extract structure and documentation from structs"
+documentation = "https://docs.rs/structdoc"
+repository = "https://github.com/vorner/structdoc"
+readme = "README.md"
+keywords = ["documentation", "configuration"]
+license = "Apache-2.0/MIT"
+
+[badges]
+travis-ci = { repository = "vorner/structdoc" }
+appveyor = { repository = "vorner/corona" }
+maintenance = { status = "actively-developed" }
 
 [workspace]
 members = [
@@ -21,3 +32,4 @@ structdoc-derive = { version = "~0.1", path = "structdoc-derive", optional = tru
 [dev-dependencies]
 serde = "~1"
 serde_derive = "~1"
+version-sync = "~0.6"

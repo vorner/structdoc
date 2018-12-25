@@ -43,13 +43,8 @@ pub enum Arity {
 pub enum Tagging {
     Untagged,
     External,
-    Internal {
-        tag: String
-    },
-    Adjacent {
-        tag: String,
-        content: String,
-    },
+    Internal { tag: String },
+    Adjacent { tag: String, content: String },
 }
 
 #[derive(Debug, Default, Eq, PartialEq, Ord, PartialOrd)]
@@ -78,7 +73,11 @@ impl Entry {
             let space = if self.caption.is_empty() { "" } else { " " };
             format!("{}({})", space, self.flags.iter().rev().join(", "))
         };
-        let colon = if self.text.is_empty() && self.sub.is_empty() { ' ' } else { ':' };
+        let colon = if self.text.is_empty() && self.sub.is_empty() {
+            ' '
+        } else {
+            ':'
+        };
         writeln!(fmt, "{}{}{}{}", indent, self.caption, flags, colon)?;
         indent.push_str("  ");
         for line in &self.text {
@@ -200,7 +199,7 @@ impl Node {
                 };
                 Entry {
                     flags,
-                    .. Entry::default()
+                    ..Entry::default()
                 }
             }
             Node::Wrapper {
@@ -240,9 +239,7 @@ impl Node {
                 }
                 entry
             }
-            Node::Struct(fields) => {
-                Self::struct_from(fields)
-            }
+            Node::Struct(fields) => Self::struct_from(fields),
             Node::Enum { variants, tagging } => {
                 let mut variants = variants
                     .iter()
@@ -260,13 +257,11 @@ impl Node {
                         )
                     }
                     Tagging::External => ("One-of", Processing::SORT, String::new()),
-                    Tagging::Internal { tag } => {
-                        (
-                            "Alternatives (inline other fields)",
-                            Processing::SORT,
-                            format!("Field {}", tag),
-                        )
-                    }
+                    Tagging::Internal { tag } => (
+                        "Alternatives (inline other fields)",
+                        Processing::SORT,
+                        format!("Field {}", tag),
+                    ),
                     Tagging::Adjacent { tag, content } => {
                         for (num, var) in variants.iter_mut().enumerate() {
                             let cap = var.caption.replacen("Variant ", "Constant ", 1);
@@ -352,9 +347,10 @@ impl Documentation {
             fields.into_iter().map(|(t, f)| (t.into(), f)).collect(),
         ))
     }
-    pub fn enum_(variants: impl IntoIterator<Item = (impl Into<Text>, Field)>, tagging: Tagging)
-        -> Self
-    {
+    pub fn enum_(
+        variants: impl IntoIterator<Item = (impl Into<Text>, Field)>,
+        tagging: Tagging,
+    ) -> Self {
         Documentation(Node::Enum {
             variants: variants.into_iter().map(|(t, f)| (t.into(), f)).collect(),
             tagging,

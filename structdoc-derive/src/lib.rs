@@ -8,11 +8,11 @@ use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::fold::{self, Fold};
 use syn::punctuated::Punctuated;
-use syn::token::{Comma, Colon2};
+use syn::token::{Colon2, Comma};
 use syn::{
     Attribute, Data, DataEnum, DataStruct, DeriveInput, Field, Fields, Generics, Ident,
     LifetimeDef, Lit, Meta, MetaList, MetaNameValue, NestedMeta, Path, PathArguments, PathSegment,
-    TypeParam, TypeParamBound, TraitBound, TraitBoundModifier, Variant,
+    TraitBound, TraitBoundModifier, TypeParam, TypeParamBound, Variant,
 };
 
 #[derive(Clone, Eq, PartialEq)]
@@ -65,9 +65,7 @@ impl From<&str> for RenameMode {
 #[derive(Clone, Eq, PartialEq)]
 enum Tag {
     Untagged,
-    Internal {
-        tag: String,
-    },
+    Internal { tag: String },
 }
 
 #[derive(Clone, Eq, PartialEq)]
@@ -87,17 +85,14 @@ enum Attr {
 
 fn parse_word(outer: &Ident, inner: &Ident) -> Option<Attr> {
     match (outer.to_string().as_ref(), inner.to_string().as_ref()) {
-        ("doc", "hidden") |
-        ("serde", "skip") |
-        ("serde", "skip_deserializing") |
-        ("structdoc", "skip") => Some(Attr::Hidden),
-        ("serde", "flatten") |
-        ("structdoc", "flatten") => Some(Attr::Flatten),
-        ("serde", "default") |
-        ("structdoc", "default") => Some(Attr::Default),
+        ("doc", "hidden")
+        | ("serde", "skip")
+        | ("serde", "skip_deserializing")
+        | ("structdoc", "skip") => Some(Attr::Hidden),
+        ("serde", "flatten") | ("structdoc", "flatten") => Some(Attr::Flatten),
+        ("serde", "default") | ("structdoc", "default") => Some(Attr::Default),
         ("structdoc", "leaf") => Some(Attr::Leaf(String::new())),
-        ("serde", "untagged") |
-        ("structdoc", "untagged") => Some(Attr::Tag(Tag::Untagged)),
+        ("serde", "untagged") | ("structdoc", "untagged") => Some(Attr::Tag(Tag::Untagged)),
         ("structdoc", attr) => panic!("Unknown structdoc attribute {}", attr),
         // TODO: serde-untagged
         // TODO: Does serde-transparent mean anything to us?
@@ -107,27 +102,31 @@ fn parse_word(outer: &Ident, inner: &Ident) -> Option<Attr> {
 }
 
 fn parse_name_value(outer: &Ident, inner: &Ident, value: &Lit) -> Option<Attr> {
-    match (outer.to_string().as_ref(), inner.to_string().as_ref(), value) {
-        ("serde", "rename_all", Lit::Str(s)) |
-        ("structdoc", "rename_all", Lit::Str(s)) => {
+    match (
+        outer.to_string().as_ref(),
+        inner.to_string().as_ref(),
+        value,
+    ) {
+        ("serde", "rename_all", Lit::Str(s)) | ("structdoc", "rename_all", Lit::Str(s)) => {
             Some(Attr::RenameAll(RenameMode::from(&s.value() as &str)))
         }
-        ("serde", "rename_all", _) |
-        ("structdoc", "rename_all", _) => panic!("rename-all expects string"),
-        ("serde", "rename", Lit::Str(s)) |
-        ("structdoc", "rename", Lit::Str(s)) => Some(Attr::Rename(s.value())),
-        ("serde", "rename", _) |
-        ("structdoc", "rename", _) => panic!("rename expects string"),
+        ("serde", "rename_all", _) | ("structdoc", "rename_all", _) => {
+            panic!("rename-all expects string")
+        }
+        ("serde", "rename", Lit::Str(s)) | ("structdoc", "rename", Lit::Str(s)) => {
+            Some(Attr::Rename(s.value()))
+        }
+        ("serde", "rename", _) | ("structdoc", "rename", _) => panic!("rename expects string"),
         ("structdoc", "leaf", Lit::Str(s)) => Some(Attr::Leaf(s.value())),
         ("structdoc", "leaf", _) => panic!("leaf expects string"),
-        ("serde", "tag", Lit::Str(s)) |
-        ("structdoc", "tag", Lit::Str(s)) => Some(Attr::Tag(Tag::Internal { tag: s.value() })),
-        ("serde", "tag", _) |
-        ("structdoc", "tag", _) => panic!("tag expects string"),
-        ("serde", "content", Lit::Str(s)) |
-        ("structdoc", "content", Lit::Str(s)) => Some(Attr::TagContent(s.value())),
-        ("serde", "content", _) |
-        ("structdoc", "content", _) => panic!("content expects string"),
+        ("serde", "tag", Lit::Str(s)) | ("structdoc", "tag", Lit::Str(s)) => {
+            Some(Attr::Tag(Tag::Internal { tag: s.value() }))
+        }
+        ("serde", "tag", _) | ("structdoc", "tag", _) => panic!("tag expects string"),
+        ("serde", "content", Lit::Str(s)) | ("structdoc", "content", Lit::Str(s)) => {
+            Some(Attr::TagContent(s.value()))
+        }
+        ("serde", "content", _) | ("structdoc", "content", _) => panic!("content expects string"),
         ("structdoc", name, _) => panic!("Unknown strucdoc attribute {}", name),
         _ => None,
     }
@@ -139,9 +138,11 @@ fn parse_nested_meta(
 ) -> impl Iterator<Item = Attr> {
     nested.into_iter().filter_map(move |nm| match nm {
         NestedMeta::Meta(Meta::Word(word)) => parse_word(&ident, &word),
-        NestedMeta::Meta(Meta::NameValue(MetaNameValue { ident: name, lit: value, .. })) => {
-            parse_name_value(&ident, &name, &value)
-        }
+        NestedMeta::Meta(Meta::NameValue(MetaNameValue {
+            ident: name,
+            lit: value,
+            ..
+        })) => parse_name_value(&ident, &name, &value),
         _ => panic!("Confused by attribute syntax"),
     })
 }
@@ -191,13 +192,7 @@ fn mangle_name(name: &Ident, container_attrs: &[Attr], field_attrs: &[Attr]) -> 
 fn get_doc(attrs: &[Attr]) -> String {
     let lines = iter::once(&Attr::Doc(String::new()))
         .chain(attrs)
-        .filter_map(|a| {
-            if let Attr::Doc(d) = a {
-                Some(d)
-            } else {
-                None
-            }
-        })
+        .filter_map(|a| if let Attr::Doc(d) = a { Some(d) } else { None })
         .join("\n");
     unindent::unindent(&lines)
 }
@@ -289,57 +284,52 @@ fn find_tag_content(attrs: &[Attr]) -> Option<&str> {
 
 fn derive_enum(variants: &Punctuated<Variant, Comma>, attrs: &[Attribute]) -> TokenStream {
     let enum_attrs = parse_attrs(attrs);
-    let insert_varianst = variants
-        .iter()
-        .map(|variant| {
-            let variant_attrs = parse_attrs(&variant.attrs);
-            let name = mangle_name(&variant.ident, &enum_attrs, &variant_attrs);
-            let doc = get_doc(&variant_attrs);
-            let mods = get_mods(&Ident::new("variant", Span::call_site()), &variant_attrs);
-            let found_leaf = find_leaf(&variant_attrs);
-            let is_leaf = found_leaf.is_some() || variant_attrs.contains(&Attr::Hidden);
-            let constructor = if is_leaf {
-                leaf(found_leaf.unwrap_or_default())
-            } else {
-                match &variant.fields {
-                    Fields::Unit => leaf(""),
-                    Fields::Named(fields) => {
-                        let mut attrs = Vec::new();
-                        attrs.extend(variant_attrs);
-                        attrs.extend(enum_attrs.clone());
-                        let insert_fields = fields
-                            .named
-                            .iter()
-                            .map(|field| named_field(field, &attrs));
-                        quote! {
-                            {
-                                let mut fields =
-                                    ::std::vec::Vec::<(&str, ::structdoc::Field)>::new();
-                                #(#insert_fields)*
-                                ::structdoc::Documentation::struct_(fields)
-                            }
+    let insert_varianst = variants.iter().map(|variant| {
+        let variant_attrs = parse_attrs(&variant.attrs);
+        let name = mangle_name(&variant.ident, &enum_attrs, &variant_attrs);
+        let doc = get_doc(&variant_attrs);
+        let mods = get_mods(&Ident::new("variant", Span::call_site()), &variant_attrs);
+        let found_leaf = find_leaf(&variant_attrs);
+        let is_leaf = found_leaf.is_some() || variant_attrs.contains(&Attr::Hidden);
+        let constructor = if is_leaf {
+            leaf(found_leaf.unwrap_or_default())
+        } else {
+            match &variant.fields {
+                Fields::Unit => leaf(""),
+                Fields::Named(fields) => {
+                    let mut attrs = Vec::new();
+                    attrs.extend(variant_attrs);
+                    attrs.extend(enum_attrs.clone());
+                    let insert_fields = fields.named.iter().map(|field| named_field(field, &attrs));
+                    quote! {
+                        {
+                            let mut fields =
+                                ::std::vec::Vec::<(&str, ::structdoc::Field)>::new();
+                            #(#insert_fields)*
+                            ::structdoc::Documentation::struct_(fields)
                         }
                     }
-                    Fields::Unnamed(fields) if fields.unnamed.is_empty() => leaf(""),
-                    Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
-                        let ty = &fields.unnamed[0].ty;
-                        quote!(<#ty as ::structdoc::StructDoc>::document())
-                    }
-                    Fields::Unnamed(fields) => {
-                        panic!(
-                            "Don't know what to do with tuple variant with {} fields",
-                            fields.unnamed.len(),
-                        );
-                    }
                 }
-            };
-            quote!{
-                let mut variant = #constructor;
-                #mods
-                let variant = ::structdoc::Field::new(variant, #doc);
-                variants.push((#name.into(), variant));
+                Fields::Unnamed(fields) if fields.unnamed.is_empty() => leaf(""),
+                Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
+                    let ty = &fields.unnamed[0].ty;
+                    quote!(<#ty as ::structdoc::StructDoc>::document())
+                }
+                Fields::Unnamed(fields) => {
+                    panic!(
+                        "Don't know what to do with tuple variant with {} fields",
+                        fields.unnamed.len(),
+                    );
+                }
             }
-        });
+        };
+        quote! {
+            let mut variant = #constructor;
+            #mods
+            let variant = ::structdoc::Field::new(variant, #doc);
+            variants.push((#name.into(), variant));
+        }
+    });
 
     let tag = match (find_tag(&enum_attrs), find_tag_content(&enum_attrs)) {
         (None, _) => quote!(External),
@@ -382,7 +372,7 @@ fn filter_generic_bounds(generics: &Generics) -> Generics {
                 path: Path {
                     leading_colon: Some(Colon2::default()),
                     segments,
-                }
+                },
             }));
             p
         }
@@ -436,10 +426,7 @@ pub fn structdoc_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStre
             fields: Fields::Unnamed(ref fields),
             ..
         }) if fields.unnamed.len() == 1 => derive_transparent(&fields.unnamed[0]),
-        Data::Enum(DataEnum {
-            variants,
-            ..
-        }) => derive_enum(&variants, &input.attrs),
+        Data::Enum(DataEnum { variants, .. }) => derive_enum(&variants, &input.attrs),
         _ => unimplemented!("Only named structs and enums for now :-("),
     };
     (quote! {
@@ -450,5 +437,6 @@ pub fn structdoc_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStre
                 #inner
             }
         }
-    }).into()
+    })
+    .into()
 }
