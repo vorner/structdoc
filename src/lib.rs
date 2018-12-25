@@ -1,5 +1,5 @@
 #![doc(
-    html_root_url = "https://docs.rs/structdoc/0.1.0/structdoc/",
+    html_root_url = "https://docs.rs/structdoc/0.1.1/structdoc/",
     test(attr(deny(warnings)))
 )]
 #![forbid(unsafe_code)]
