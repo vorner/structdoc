@@ -20,13 +20,11 @@ use either::Either;
 use itertools::Itertools;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use syn::fold::{self, Fold};
 use syn::punctuated::Punctuated;
-use syn::token::{Colon2, Comma};
+use syn::token::Comma;
 use syn::{
-    Attribute, Data, DataEnum, DataStruct, DeriveInput, Field, Fields, Generics, Ident,
-    LifetimeDef, Lit, LitStr, Meta, MetaList, MetaNameValue, NestedMeta, Path, PathArguments,
-    PathSegment, TraitBound, TraitBoundModifier, TypeParam, TypeParamBound, Variant,
+    Attribute, Data, DataEnum, DataStruct, DeriveInput, Field, Fields, Ident, Lit, LitStr, Meta,
+    MetaList, MetaNameValue, NestedMeta, Path, Variant,
 };
 
 macro_rules! pat_eq {
@@ -390,63 +388,6 @@ fn derive_enum(variants: &Punctuated<Variant, Comma>, attrs: &[Attribute]) -> To
     }
 }
 
-fn filter_generic_bounds(generics: &Generics) -> Generics {
-    struct Filter;
-
-    // TODO: Attribute to allow not adding the generic bound
-
-    impl Fold for Filter {
-        fn fold_type_param(&mut self, mut p: TypeParam) -> TypeParam {
-            p.eq_token.take();
-            p.default.take();
-            let mut segments = Punctuated::<PathSegment, Colon2>::new();
-            segments.push(PathSegment {
-                ident: Ident::new("structdoc", Span::call_site()),
-                arguments: PathArguments::None,
-            });
-            segments.push(PathSegment {
-                ident: Ident::new("StructDoc", Span::call_site()),
-                arguments: PathArguments::None,
-            });
-            p.bounds.push(TypeParamBound::Trait(TraitBound {
-                paren_token: None,
-                modifier: TraitBoundModifier::None,
-                lifetimes: None,
-                path: Path {
-                    leading_colon: Some(Colon2::default()),
-                    segments,
-                },
-            }));
-            p
-        }
-    }
-
-    fold::fold_generics(&mut Filter, generics.clone())
-}
-
-fn filter_generic_types(generics: &Generics) -> Generics {
-    struct Filter;
-
-    impl Fold for Filter {
-        fn fold_type_param(&mut self, mut p: TypeParam) -> TypeParam {
-            p.eq_token.take();
-            p.colon_token.take();
-            p.default.take();
-            p.attrs.clear();
-            p.bounds = Punctuated::new();
-            p
-        }
-        fn fold_lifetime_def(&mut self, mut d: LifetimeDef) -> LifetimeDef {
-            d.attrs.clear();
-            d.colon_token.take();
-            d.bounds = Punctuated::new();
-            d
-        }
-    }
-
-    fold::fold_generics(&mut Filter, generics.clone())
-}
-
 fn derive_transparent(field: &Field) -> TokenStream {
     let ty = &field.ty;
     quote!(<#ty as ::structdoc::StructDoc>::document())
@@ -455,11 +396,12 @@ fn derive_transparent(field: &Field) -> TokenStream {
 // Note: We declare the structdoc attribute. But we also parasite on serde attribute if present.
 #[proc_macro_derive(StructDoc, attributes(structdoc))]
 pub fn structdoc_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let input: DeriveInput = syn::parse(input).unwrap();
+    let mut input: DeriveInput = syn::parse(input).unwrap();
+    input.generics.make_where_clause();
     let name = &input.ident;
-    let generic_bounds = filter_generic_bounds(&input.generics);
-    let generic_types = filter_generic_types(&input.generics);
-    let where_clause = input.generics.where_clause;
+    let our_where = input.generics.type_params()
+        .map(|t| quote!(#t: ::structdoc::StructDoc,));
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     let inner = match input.data {
         Data::Struct(DataStruct {
             fields: Fields::Named(fields),
@@ -473,8 +415,9 @@ pub fn structdoc_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStre
         _ => unimplemented!("Only named structs and enums for now :-("),
     };
     (quote! {
-        impl #generic_bounds ::structdoc::StructDoc for #name #generic_types
+        impl #impl_generics ::structdoc::StructDoc for #name #ty_generics
         #where_clause
+            #(#our_where)*
         {
             fn document() -> ::structdoc::Documentation {
                 #inner

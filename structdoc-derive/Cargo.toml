@@ -1,6 +1,6 @@
 [package]
 name = "structdoc-derive"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Michal 'vorner' Vaner <vorner@vorner.cz>"]
 edition = "2018"
 description = "Extract structure and documentation from structs (derive support)"
@@ -19,7 +19,7 @@ heck = "~0.3"
 itertools = "~0.8"
 quote = "~0.6"
 proc-macro2 = "~0.4"
-syn = { version = "~0.15", features = ["fold"] }
+syn = "~0.15"
 unindent = "~0.1"
 
 [dev-dependencies]
