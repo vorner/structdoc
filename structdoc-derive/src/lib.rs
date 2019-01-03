@@ -1,5 +1,5 @@
 #![doc(
-    html_root_url = "https://docs.rs/structdoc-derive/0.1.1/structdoc-derive/",
+    html_root_url = "https://docs.rs/structdoc-derive/0.1.2/structdoc-derive/",
     test(attr(deny(warnings)))
 )]
 #![forbid(unsafe_code)]
@@ -397,17 +397,12 @@ fn derive_transparent(field: &Field) -> TokenStream {
 #[proc_macro_derive(StructDoc, attributes(structdoc))]
 pub fn structdoc_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let mut input: DeriveInput = syn::parse(input).unwrap();
-    if input.generics.type_params().count() > 0 {
-        let preds = &mut input.generics.make_where_clause().predicates;
-        if !preds.empty_or_trailing() {
-            preds.push_punct(Comma::default());
-        }
+    let types = input.generics.type_params().cloned().collect::<Vec<_>>();
+    let clause = input.generics.make_where_clause();
+    for t in types {
+        clause.predicates.push(syn::parse(quote!(#t: ::structdoc::StructDoc).into()).unwrap());
     }
     let name = &input.ident;
-    let our_where = input
-        .generics
-        .type_params()
-        .map(|t| quote!(#t: ::structdoc::StructDoc,));
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     let inner = match input.data {
         Data::Struct(DataStruct {
@@ -424,12 +419,10 @@ pub fn structdoc_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStre
     (quote! {
         impl #impl_generics ::structdoc::StructDoc for #name #ty_generics
         #where_clause
-            #(#our_where)*
         {
             fn document() -> ::structdoc::Documentation {
                 #inner
             }
         }
-    })
-    .into()
+    }).into()
 }

@@ -4,6 +4,9 @@
 use serde_derive::Deserialize;
 use structdoc::{Documentation, StructDoc};
 
+#[derive(StructDoc)]
+struct A<T>(T);
+
 #[derive(StructDoc, Deserialize)]
 #[structdoc(rename_all = "SCREAMING-KEBAB-CASE")]
 struct Stuff<T>

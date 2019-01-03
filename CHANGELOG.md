@@ -1,3 +1,7 @@
+# derive-0.1.2
+
+* Fix empty where clauses.
+
 # derive-0.1.1
 
 * Use library functions to extract correct type params and bounds, making the
