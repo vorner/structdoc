@@ -4,32 +4,6 @@
 use serde_derive::Deserialize;
 use structdoc::{Documentation, StructDoc};
 
-#[derive(Deserialize)]
-enum Undocumented {
-    A,
-}
-
-#[derive(Deserialize, StructDoc)]
-#[serde(tag = "type", rename_all = "camelCase")]
-enum Selection {
-    A {
-        a: i32,
-        b: i32,
-    },
-    X {
-        x: String,
-    },
-    #[structdoc(leaf)]
-    AnotherThing(Undocumented),
-    FooBar(String),
-    #[serde(skip)]
-    Other,
-}
-
-fn gen_doc() -> Documentation {
-    Documentation::leaf("Manual implementation")
-}
-
 #[derive(StructDoc, Deserialize)]
 #[structdoc(rename_all = "SCREAMING-KEBAB-CASE")]
 struct Stuff<T>
@@ -58,6 +32,32 @@ where
 
     #[structdoc(with = "gen_doc")]
     flag: bool,
+}
+
+#[derive(Deserialize)]
+enum Undocumented {
+    A,
+}
+
+#[derive(Deserialize, StructDoc)]
+#[serde(tag = "type", rename_all = "camelCase")]
+enum Selection {
+    A {
+        a: i32,
+        b: i32,
+    },
+    X {
+        x: String,
+    },
+    #[structdoc(leaf)]
+    AnotherThing(Undocumented),
+    FooBar(String),
+    #[serde(skip)]
+    Other,
+}
+
+fn gen_doc() -> Documentation {
+    Documentation::leaf("Manual implementation")
 }
 
 #[derive(Clone, StructDoc, Deserialize)]
