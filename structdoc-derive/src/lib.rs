@@ -404,7 +404,9 @@ pub fn structdoc_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStre
         }
     }
     let name = &input.ident;
-    let our_where = input.generics.type_params()
+    let our_where = input
+        .generics
+        .type_params()
         .map(|t| quote!(#t: ::structdoc::StructDoc,));
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     let inner = match input.data {
