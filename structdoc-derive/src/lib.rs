@@ -401,7 +401,9 @@ pub fn structdoc_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStre
     let clause = input.generics.make_where_clause();
     for t in types {
         let t = t.ident;
-        clause.predicates.push(syn::parse(quote!(#t: ::structdoc::StructDoc).into()).unwrap());
+        clause
+            .predicates
+            .push(syn::parse(quote!(#t: ::structdoc::StructDoc).into()).unwrap());
     }
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
@@ -425,5 +427,6 @@ pub fn structdoc_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStre
                 #inner
             }
         }
-    }).into()
+    })
+    .into()
 }
