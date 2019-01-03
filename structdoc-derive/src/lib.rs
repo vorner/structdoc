@@ -400,6 +400,7 @@ pub fn structdoc_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStre
     let types = input.generics.type_params().cloned().collect::<Vec<_>>();
     let clause = input.generics.make_where_clause();
     for t in types {
+        let t = t.ident;
         clause.predicates.push(syn::parse(quote!(#t: ::structdoc::StructDoc).into()).unwrap());
     }
     let name = &input.ident;

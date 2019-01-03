@@ -5,7 +5,7 @@ use serde_derive::Deserialize;
 use structdoc::{Documentation, StructDoc};
 
 #[derive(StructDoc)]
-struct A<T>(T);
+struct A<T: Default = ()>(T);
 
 #[derive(StructDoc, Deserialize)]
 #[structdoc(rename_all = "SCREAMING-KEBAB-CASE")]
