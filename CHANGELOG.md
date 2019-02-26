@@ -1,3 +1,7 @@
+# derive-0.1.3
+
+* Min dep requirements.
+
 # derive-0.1.2
 
 * Fix empty where clauses.
