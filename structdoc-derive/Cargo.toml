@@ -23,7 +23,7 @@ syn = "~0.15.26"
 unindent = "~0.1"
 
 [dev-dependencies]
-version-sync = "~0.6"
+version-sync = "~0.8"
 
 [lib]
 proc-macro = true
