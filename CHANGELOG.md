@@ -1,3 +1,7 @@
+# derive-0.1.4
+
+* Dep updates (syn, quote and proc-macro2 went 1.0, yay!).
+
 # derive-0.1.3
 
 * Min dep requirements.

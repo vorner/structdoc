@@ -17,9 +17,9 @@ nightly = ["proc-macro2/nightly"]
 either = "~1"
 heck = "~0.3"
 itertools = "~0.8"
-quote = "~0.6"
-proc-macro2 = "~0.4"
-syn = "~0.15.26"
+quote = "~1"
+proc-macro2 = "~1"
+syn = "~1"
 unindent = "~0.1"
 
 [dev-dependencies]

@@ -104,7 +104,7 @@ enum Attr {
     With(LitStr),
 }
 
-fn parse_word(outer: &Ident, inner: &Ident) -> Option<Attr> {
+fn parse_paren(outer: &Ident, inner: &Ident) -> Option<Attr> {
     match (outer.to_string().as_ref(), inner.to_string().as_ref()) {
         ("doc", "hidden")
         | ("serde", "skip")
@@ -159,12 +159,14 @@ fn parse_nested_meta(
     nested: impl IntoIterator<Item = NestedMeta>,
 ) -> impl Iterator<Item = Attr> {
     nested.into_iter().filter_map(move |nm| match nm {
-        NestedMeta::Meta(Meta::Word(word)) => parse_word(&ident, &word),
+        NestedMeta::Meta(Meta::Path(path)) => {
+            parse_paren(&ident, &path.get_ident().expect("Multi-word attribute"))
+        }
         NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-            ident: name,
+            path: name,
             lit: value,
             ..
-        })) => parse_name_value(&ident, &name, &value),
+        })) => parse_name_value(&ident, name.get_ident().expect("Bad name"), &value),
         _ => panic!("Confused by attribute syntax"),
     })
 }
@@ -179,13 +181,18 @@ fn parse_attrs(attrs: &[Attribute]) -> Vec<Attr> {
                 || attr.path.is_ident("serde")
         })
         // Interpret each as meta (all of them should be fine)
-        .map(|attr| attr.interpret_meta().expect("Unparsable attribute"))
+        .map(|attr| attr.parse_meta().expect("Unparsable attribute"))
         .flat_map(|meta| match meta {
-            Meta::List(MetaList { ident, nested, .. }) => {
+            Meta::List(MetaList { path, nested, .. }) => {
+                let ident = path.get_ident().expect("Multi-word attribute").to_owned();
                 Either::Left(parse_nested_meta(ident, nested))
             }
-            Meta::NameValue(MetaNameValue { ident, lit, .. }) => {
-                assert_eq!(ident, "doc", "Broken attribute");
+            Meta::NameValue(MetaNameValue { path, lit, .. }) => {
+                assert_eq!(
+                    path.get_ident().expect("Non-ident attribute"),
+                    "doc",
+                    "Broken attribute"
+                );
                 if let Lit::Str(string) = lit {
                     Either::Right(iter::once(Attr::Doc(string.value())))
                 } else {
@@ -374,9 +381,7 @@ fn derive_enum(variants: &Punctuated<Variant, Comma>, attrs: &[Attribute]) -> To
 
     let tag = match (find_tag(&enum_attrs), find_tag_content(&enum_attrs)) {
         (None, _) => quote!(External),
-        (Some(Tag::Internal { tag }), Some(content)) => {
-            quote!(Adjacent { tag: #tag.to_owned(), content: #content.to_owned() })
-        }
+        (Some(Tag::Internal { tag }), Some(content)) => quote!(Adjacent { tag: #tag.to_owned(), content: #content.to_owned() }),
         (Some(Tag::Internal { tag }), _) => quote!(Internal { tag: #tag.to_owned() }),
         (Some(Tag::Untagged), _) => quote!(Untagged),
     };
