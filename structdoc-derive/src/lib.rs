@@ -379,9 +379,12 @@ fn derive_enum(variants: &Punctuated<Variant, Comma>, attrs: &[Attribute]) -> To
         }
     });
 
+    #[rustfmt::skip] // Tries to make long lines
     let tag = match (find_tag(&enum_attrs), find_tag_content(&enum_attrs)) {
         (None, _) => quote!(External),
-        (Some(Tag::Internal { tag }), Some(content)) => quote!(Adjacent { tag: #tag.to_owned(), content: #content.to_owned() }),
+        (Some(Tag::Internal { tag }), Some(content)) => {
+            quote!(Adjacent { tag: #tag.to_owned(), content: #content.to_owned() })
+        },
         (Some(Tag::Internal { tag }), _) => quote!(Internal { tag: #tag.to_owned() }),
         (Some(Tag::Untagged), _) => quote!(Untagged),
     };
