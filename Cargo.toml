@@ -12,7 +12,7 @@ license = "Apache-2.0/MIT"
 
 [badges]
 travis-ci = { repository = "vorner/structdoc" }
-appveyor = { repository = "vorner/corona" }
+appveyor = { repository = "vorner/structdoc" }
 maintenance = { status = "actively-developed" }
 
 [workspace]

@@ -10,6 +10,11 @@ readme = "README.md"
 keywords = ["documentation", "configuration"]
 license = "Apache-2.0/MIT"
 
+[badges]
+travis-ci = { repository = "vorner/structdoc" }
+appveyor = { repository = "vorner/structdoc" }
+maintenance = { status = "actively-developed" }
+
 [features]
 nightly = ["proc-macro2/nightly"]
 
